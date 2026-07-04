@@ -1,0 +1,112 @@
+# 変更履歴
+
+- UPDATE
+  - 後方互換がある変更
+- ADD
+  - 後方互換がある追加
+- CHANGE
+  - 後方互換のない変更
+- FIX
+  - バグ修正
+
+## develop
+
+- [ADD] FLAC (RFC 9639) の Sans I/O なデコーダー / エンコーダーを実装する
+  - `StreamDecoder` / `StreamEncoder` / メタデータブロック / フレーム / サブフレームのデコード・エンコードを追加する
+  - @voluntas
+- [ADD] C API (crates/c-api) を追加する
+  - `flac_decoder_*` / `flac_encoder_*` 関数群と cbindgen による C ヘッダファイル (include/flac.h) の生成を追加する
+  - C からの利用を検証する E2E テスト (エンコード → デコードのラウンドトリップ) とサンプル (decode.c / encode.c) を追加する
+  - @voluntas
+- [ADD] WebAssembly API (crates/wasm) を追加する
+  - c-api の全関数に加えて、メモリ管理関数 (`flac_alloc` など) と JSON 変換関数 (`flac_stream_info_to_json` / `flac_decoded_frame_to_json`) を提供する
+  - サイズ最小化用の release-wasm ビルドプロファイルと Node.js のサンプル (decode.js / encode.js) を追加する
+  - @voluntas
+- [UPDATE] ビット I/O を 1 ビットずつの処理からバイト単位処理にして高速化する
+  - @voluntas
+- [UPDATE] CRC-8 / CRC-16 をコンパイル時生成のテーブル駆動にして高速化する
+  - @voluntas
+- [UPDATE] Rice パラメータ選択を残差 1 パスのビット位置ヒストグラム方式にして高速化する
+  - 選択結果は全探索と同一のままエンコードを約 3 倍高速化する
+  - @voluntas
+- [UPDATE] ビットリーダーを 8 バイトワード読みにしてデコードを高速化する
+  - @voluntas
+- [UPDATE] デコーダーのバッファ管理をオフセット方式にして MD5 計算の中間コピーを削減する
+  - フレームごとの残データ移動をやめ、デコードを約 10% 高速化する
+  - @voluntas
+- [UPDATE] 固定予測の次数選択を誤差和の 1 パス計算にしてエンコードを高速化する
+  - @voluntas
+- [UPDATE] LPC の予測ループを前向きの連続アクセスにしてエンコード / デコードを高速化する
+  - @voluntas
+- [UPDATE] エンコーダーの MD5 作業バッファを再利用してフレームごとの再確保をなくす
+  - @voluntas
+- [UPDATE] Rice パラメータ選択の統計をシフト和の直接計算にしてエンコードを高速化する
+  - 選択結果は全探索と同一のまま統計収集の分岐をなくす
+  - @voluntas
+- [UPDATE] LPC の自己相関を 4 レーンの積和にしてエンコードを高速化する
+  - @voluntas
+- [UPDATE] MD5 の圧縮関数を 4 ラウンドの分岐なしループにして高速化する
+  - @voluntas
+- [UPDATE] 固定予測の残差計算と復元を次数別ループにして高速化する
+  - @voluntas
+- [UPDATE] ビットライターを 64 bit アキュムレータ方式にしてエンコードを高速化する
+  - @voluntas
+- [UPDATE] エンコーダーのブロック処理とサブフレーム計画の中間コピーを削減する
+  - @voluntas
+- [UPDATE] ビットリーダーをキャッシュ付きリフィル方式にしてデコードを高速化する
+  - Rice 符号の quotient と remainder を 1 回のキャッシュ参照で読む
+  - @voluntas
+- [UPDATE] Rice 符号の書き出しを 1 回の書き込みに融合してエンコードを高速化する
+  - @voluntas
+- [UPDATE] デコーダーのチャンネルバッファを再利用してフレームごとの再確保をなくす
+  - @voluntas
+- [UPDATE] 固定予測の次数選択を階差カスケードにしてエンコードを高速化する
+  - 選択結果は変わらないまま乗算をなくす
+  - @voluntas
+- [UPDATE] フレームを出力バッファへ直接書き出して中間コピーを削減する
+  - @voluntas
+- [UPDATE] CRC-16 を slice-by-8 方式にしてフレーム検証を高速化する
+  - 8 バイトを独立な 8 面のテーブル参照でまとめて処理し、テーブル参照の直列依存をなくす
+  - @voluntas
+- [UPDATE] MD5 入力のバイト列変換をバイト数別のまとめ書きにして高速化する
+  - @voluntas
+- [UPDATE] デコード出力の範囲検証とインターリーブを分離して高速化する
+  - どちらの走査も分岐のない形になり自動ベクトル化される
+  - @voluntas
+- [UPDATE] Rice 残差のデコードをパーティション単位のまとめ書きにして高速化する
+  - @voluntas
+- [UPDATE] 固定予測の残差計算と復元を再ロードのないループにして高速化する
+  - 復元は直前サンプルをレジスタで持ち回り、復元済みサンプルの再ロードをなくす
+  - @voluntas
+- [UPDATE] LPC の残差計算と復元を次数をコンパイル時定数にした専用ループにして高速化する
+  - 復元は直前サンプルをレジスタ上のリングで持ち回り、復元済みサンプルの再ロードをなくす
+  - @voluntas
+- [UPDATE] LPC の自己相関を複数ラグ同時の走査にしてエンコードを高速化する
+  - 既定の最大次数 8 (ラグ 9 本) までを 1 回の走査で集計し、窓適用サンプルのロードを共有する
+  - Welch 窓の適用はサンプルごとの除算を逆数の乗算に置き換える
+  - @voluntas
+- [UPDATE] Rice パラメータ選択の統計をパラメータ 8 本同時の集計にしてエンコードを高速化する
+  - 符号長の離散凸性でパラメータ探索を早期終了する (選択結果は全探索と同一)
+  - @voluntas
+- [UPDATE] Rice 符号の書き出しを隣接 2 サンプルの融合書き込みにしてエンコードを高速化する
+  - ジグザグ変換を分岐のない同値形にする
+  - @voluntas
+- [UPDATE] サブフレーム計画の走査を融合してエンコードを高速化する
+  - CONSTANT 判定と wasted bits 検出を 1 回の走査にし、残差の 32 bit 検証を Rice 統計から導出する
+  - @voluntas
+- [UPDATE] エンコーダーの入力検証とチャンネル分割を自動ベクトル化される形にする
+  - @voluntas
+- [UPDATE] エンコードの残差計算と固定予測の次数選択をサンプル格納 i32 の SIMD が効く形にして高速化する
+  - LPC 残差は出力 4 点ブロックの widening 積和 (arm64: smlal / x86_64 AVX2: vpmuldq) にする
+  - 演算は i64 のままなのでエンコード出力のバイト列は変更前と完全に同一
+  - @voluntas
+- [UPDATE] サブフレーム計画の作業バッファと残差バッファを再利用してエンコード中の malloc を削減する
+  - @voluntas
+
+### misc
+
+- [ADD] criterion によるエンコード / デコードのベンチマークを追加する
+  - @voluntas
+- [ADD] 本家 flac コマンドと相互運用・圧縮率・速度を比較する開発ツール flac_compare を追加する
+  - `make compare` で双方向の PCM 一致・flac -t・メタデータ除外の圧縮率・CLI end-to-end の速度を一括で確認する
+  - @voluntas

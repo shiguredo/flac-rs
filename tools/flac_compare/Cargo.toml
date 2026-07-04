@@ -1,0 +1,13 @@
+[package]
+name = "flac_compare"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "本家 flac コマンドと相互運用・圧縮率・速度を比較する開発ツール"
+publish = false
+
+[dependencies]
+shiguredo_flac.workspace = true
+
+# 引数のパース
+noargs = "0.3"

@@ -1,0 +1,13 @@
+[package]
+name = "pbt"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# PBT フレームワーク
+proptest = "1.11"
+
+[dev-dependencies]
+shiguredo_flac.workspace = true

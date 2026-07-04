@@ -1,0 +1,17 @@
+[package]
+name = "wasm"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "flac_wasm"
+crate-type = ["cdylib"]
+
+[dependencies]
+# C API (wasm からは C API の関数をそのまま利用する)
+c_api = { package = "c-api", path = "../c-api" }
+
+# JSON の生成
+nojson = "0.3"

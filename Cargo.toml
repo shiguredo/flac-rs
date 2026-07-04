@@ -1,0 +1,48 @@
+[package]
+name = "shiguredo_flac"
+version = "2026.0.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "FLAC (Free Lossless Audio Codec) Library"
+readme = "README.md"
+homepage = "https://github.com/shiguredo/flac-rs"
+repository = "https://github.com/shiguredo/flac-rs"
+license = "Apache-2.0"
+include = ["/LICENSE", "/README.md", "/src/**"]
+
+[workspace]
+members = [
+  "benches",
+  "crates/c-api",
+  "crates/wasm",
+  "examples/flac_decode",
+  "examples/flac_encode",
+  "pbt",
+  "tools/flac_compare",
+]
+exclude = ["fuzz"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+
+[workspace.dependencies]
+# 本ライブラリ (workspace ルートを参照)
+shiguredo_flac = { path = "." }
+
+[dependencies]
+
+# wasm リリース用のビルドプロファイル (サイズ最小化)
+# cargo build --profile release-wasm --package wasm --target wasm32-unknown-unknown
+[profile.release-wasm]
+inherits = "release"
+# LTO でクレート間の最適化を行いサイズを削減
+lto = true
+# 並列コンパイルを無効化して最適化の質を向上
+codegen-units = 1
+# 速度より出力サイズを優先
+opt-level = "z"
+# スタックアンワインドを省略してサイズを削減
+panic = "abort"
+# デバッグシンボルを削除してサイズを削減
+strip = true

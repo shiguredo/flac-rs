@@ -1,0 +1,50 @@
+[package]
+name = "fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+[dependencies.shiguredo_flac]
+path = ".."
+
+[[bin]]
+name = "fuzz_decoder"
+path = "fuzz_targets/fuzz_decoder.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_decoder_chunked"
+path = "fuzz_targets/fuzz_decoder_chunked.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_metadata"
+path = "fuzz_targets/fuzz_metadata.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_encoder_roundtrip"
+path = "fuzz_targets/fuzz_encoder_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_decoder_valid_prefix"
+path = "fuzz_targets/fuzz_decoder_valid_prefix.rs"
+test = false
+doc = false
+bench = false

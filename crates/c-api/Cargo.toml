@@ -1,0 +1,18 @@
+[package]
+name = "c-api"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "flac"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+# 本ライブラリ (C API のバインディング対象)
+shiguredo_flac.workspace = true
+
+[build-dependencies]
+# C ヘッダファイルの自動生成
+cbindgen = { version = "0.29", default-features = false }
