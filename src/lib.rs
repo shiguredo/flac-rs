@@ -16,7 +16,7 @@
 //! ```rust
 //! use shiguredo_flac::encoder::{StreamEncoder, StreamEncoderConfig};
 //!
-//! # fn main() -> Result<(), shiguredo_flac::EncodeError> {
+//! # fn main() -> Result<(), shiguredo_flac::error::EncodeError> {
 //! let config = StreamEncoderConfig {
 //!     sample_rate: 44100,
 //!     channels: 2,
@@ -37,7 +37,7 @@
 //! ```rust,no_run
 //! use shiguredo_flac::decoder::StreamDecoder;
 //!
-//! # fn main() -> Result<(), shiguredo_flac::DecodeError> {
+//! # fn main() -> Result<(), shiguredo_flac::error::DecodeError> {
 //! let mut decoder = StreamDecoder::new();
 //! // 受信データを feed し、入力終端で finish を呼ぶ
 //! # let received: &[u8] = &[];
@@ -60,7 +60,7 @@ mod crc;
 pub mod cuesheet;
 pub mod decoder;
 pub mod encoder;
-mod error;
+pub mod error;
 mod fixed;
 pub mod frame;
 mod lpc;
@@ -70,5 +70,3 @@ pub mod picture;
 mod rice;
 mod subframe;
 pub mod vorbis_comment;
-
-pub use error::{DecodeError, EncodeError};

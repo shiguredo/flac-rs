@@ -6,7 +6,7 @@
 //! ```rust
 //! use shiguredo_flac::decoder::StreamDecoder;
 //!
-//! # fn main() -> Result<(), shiguredo_flac::DecodeError> {
+//! # fn main() -> Result<(), shiguredo_flac::error::DecodeError> {
 //! # let flac_bytes: &[u8] = &[
 //! #     0x66, 0x4c, 0x61, 0x43, 0x80, 0x00, 0x00, 0x22, 0x10, 0x00, 0x10, 0x00,
 //! #     0x00, 0x00, 0x0f, 0x00, 0x00, 0x0f, 0x0a, 0xc4, 0x42, 0xf0, 0x00, 0x00,
@@ -133,7 +133,12 @@ impl StreamDecoder {
     }
 
     /// 入力データを投入する
+    ///
+    /// `finish()` 呼び出し後は無視される。
     pub fn feed(&mut self, data: &[u8]) {
+        if self.finished {
+            return;
+        }
         self.buf.extend_from_slice(data);
     }
 
@@ -329,6 +334,9 @@ impl StreamDecoder {
         }
         // MD5 が全て 0 は不明を表す (RFC 9639 Section 8.2)
         if info.md5 != [0u8; 16] {
+            // verify_end は end_checked で高々1回しか呼ばれない。
+            // Md5 は Default 未実装のため take() は使えず、clone の
+            // ヒープコピーはストリーム終端の 1 回限りなので許容する。
             let actual = self.md5.clone().finalize();
             if actual != info.md5 {
                 return Err(DecodeError::Md5Mismatch {
@@ -366,7 +374,7 @@ impl StreamDecoder {
         let header = FrameHeader::decode(&mut reader)?;
 
         // ブロッキング戦略はストリームを通して変わってはならない
-        // (RFC 9639 Section 9.1)
+        // (RFC 9639 Section 9.1: "MUST NOT change during the audio stream.")
         if let Some(strategy) = self.blocking_strategy
             && header.blocking_strategy != strategy
         {
@@ -422,10 +430,24 @@ impl StreamDecoder {
             }
             None => info.sample_rate,
         };
+        // ブロックサイズ 1-15 は最終フレーム以外で使ってはならない
+        // (RFC 9639 Section 9.1.6: "only valid for the last frame in a stream
+        // and MUST NOT be used for any other frame.")
+        // ストリーミングデコーダーは最終フレームを事前に知り得ないため、
+        // 少なくとも STREAMINFO の制約 (max_block_size >= 16) との整合は取れている。
         if header.block_size > info.max_block_size {
             return Err(ParseError::Invalid(DecodeError::InvalidData(format!(
                 "frame block size {} exceeds streaminfo maximum {} (RFC 9639 Section 8.2)",
                 header.block_size, info.max_block_size
+            ))));
+        }
+
+        // sample_rate が 0 でオーディオフレームが存在するのは RFC 違反
+        // (RFC 9639 Section 9.1.7: "MUST NOT be 0 when the subframe contains audio.")
+        // STREAMINFO の sample_rate が 0 の悪意あるファイルは検出する
+        if sample_rate == 0 {
+            return Err(ParseError::Invalid(DecodeError::InvalidData(String::from(
+                "sample rate must not be 0 when audio is present (RFC 9639 Section 9.1.7)",
             ))));
         }
 
@@ -539,14 +561,14 @@ fn undo_stereo_decorrelation(channels: &mut [Vec<i64>], assignment: ChannelAssig
     match assignment {
         ChannelAssignment::Independent(_) => {}
         ChannelAssignment::LeftSide => {
-            // right = left - side
+            // right チャンネルを left と side から復元
             let (left, side) = channels.split_at_mut(1);
             for (r, &l) in side[0].iter_mut().zip(left[0].iter()) {
                 *r = l - *r;
             }
         }
         ChannelAssignment::SideRight => {
-            // left = side + right
+            // left チャンネルを side と right から復元
             let (side, right) = channels.split_at_mut(1);
             for (l, &r) in side[0].iter_mut().zip(right[0].iter()) {
                 *l += r;

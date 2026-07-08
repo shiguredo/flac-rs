@@ -87,17 +87,21 @@ pub struct FlacEncoder {
 
 impl FlacEncoder {
     fn set_last_error(&mut self, message: &str) {
-        self.last_error_string = CString::new(message).ok();
+        // NUL バイトを含む極めて稀なケースではメッセージを切り詰める
+        self.last_error_string = CString::new(message.split('\0').next().unwrap_or("")).ok();
     }
 
     /// 初期化前にだけ許される設定変更の状態チェックを行う
     ///
-    /// 初期化済みであればエラーメッセージを設定して `false` を返す
+    /// 初期化済みまたはファイナライズ済みであればエラーメッセージを設定して `false` を返す
     fn check_not_initialized(&mut self, function_name: &str) -> bool {
         if self.inner.is_some() || self.output.is_some() {
-            self.set_last_error(&format!(
-                "[{function_name}] Encoder has already been initialized"
-            ));
+            let reason = if self.output.is_some() {
+                "Encoder has already been finalized"
+            } else {
+                "Encoder has already been initialized"
+            };
+            self.set_last_error(&format!("[{function_name}] {reason}"));
             false
         } else {
             true

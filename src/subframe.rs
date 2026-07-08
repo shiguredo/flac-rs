@@ -40,7 +40,7 @@ pub(crate) fn decode_subframe(
     }
     let subframe_type = reader.read_u32(6)?;
 
-    // wasted bits (RFC 9639 Section 9.2.2)
+    // wasted bits の読み取り (RFC 9639 Section 9.2.2)
     let wasted_bits = if reader.read_bit()? {
         let k = reader.read_unary()? + 1;
         // wasted bits 適用後のビット深度は 1 以上でなければならない
@@ -61,20 +61,20 @@ pub(crate) fn decode_subframe(
     let high = (1i64 << (coded_bits - 1)) - 1;
 
     match subframe_type {
-        // CONSTANT (RFC 9639 Section 9.2.3)
+        // CONSTANT サブフレームのデコード (RFC 9639 Section 9.2.3)
         0b000000 => {
             let value = reader.read_i64(coded_bits)?;
             for _ in 0..block_size {
                 samples.push(value);
             }
         }
-        // VERBATIM (RFC 9639 Section 9.2.4)
+        // VERBATIM サブフレームのデコード (RFC 9639 Section 9.2.4)
         0b000001 => {
             for _ in 0..block_size {
                 samples.push(reader.read_i64(coded_bits)?);
             }
         }
-        // FIXED (RFC 9639 Section 9.2.5)
+        // FIXED サブフレームのデコード (RFC 9639 Section 9.2.5)
         0b001000..=0b001100 => {
             let order = (subframe_type - 0b001000) as usize;
             if order >= usize::from(block_size) {
@@ -90,7 +90,7 @@ pub(crate) fn decode_subframe(
             decode_residual(reader, block_size, order as u32, samples)?;
             fixed::restore_samples(samples, order, low, high)?;
         }
-        // LPC (RFC 9639 Section 9.2.6)
+        // LPC サブフレームのデコード (RFC 9639 Section 9.2.6)
         0b100000..=0b111111 => {
             let order = (subframe_type - 31) as usize;
             if order >= usize::from(block_size) {
@@ -232,7 +232,11 @@ impl PlanScratch {
 /// 共通する下位のゼロビット数 (RFC 9639 Section 9.2.2)。全サンプルが 0 の
 /// 場合は 0 (CONSTANT で符号化されるため wasted bits は不要)。
 fn scan_samples(samples: &[i64], bits_per_sample: u32) -> (u32, bool) {
-    let first = samples[0];
+    // 呼び出し元で空でないことは debug_assert で保証されているが、
+    // 将来の安全のためリリースビルドでもガードする
+    let Some(&first) = samples.first() else {
+        return (0, true);
+    };
     let mut all_or: i64 = 0;
     let mut all_same = true;
     for &sample in samples {
@@ -242,7 +246,7 @@ fn scan_samples(samples: &[i64], bits_per_sample: u32) -> (u32, bool) {
     if all_or == 0 {
         return (0, all_same);
     }
-    // 適用後のビット深度が 1 以上になるよう制限する
+    // 適用後のビット深度が 1 以上になるよう制限する (RFC 9639 Section 9.2.2)
     (all_or.trailing_zeros().min(bits_per_sample - 1), all_same)
 }
 
@@ -263,6 +267,18 @@ impl SubframePlan {
             !samples.is_empty(),
             "サブフレームは 1 サンプル以上 (実装バグ)"
         );
+        // 空入力に対する防衛 (呼び出し側の debug_assert がリリースビルドで
+        // 除去された場合)。空サブフレームは FLAC として無効だが、
+        // 値を詰めた定数 0 の CONSTANT 計画を返してパニックを回避する
+        if samples.is_empty() {
+            return SubframePlan {
+                kind: SubframeKind::Constant { value: 0 },
+                wasted_bits: 0,
+                coded_bits: bits_per_sample,
+                block_size: 0,
+                total_bits: 8 + u64::from(bits_per_sample),
+            };
+        }
         let block_size = samples.len() as u16;
 
         // wasted bits の検出と CONSTANT 判定は 1 回の走査で同時に行う
@@ -373,7 +389,7 @@ impl SubframePlan {
             residual_pool.push(unused);
         }
 
-        // LPC (RFC 9639 Section 9.2.6)
+        // LPC サブフレームの計画 (RFC 9639 Section 9.2.6)
         if options.max_lpc_order > 0
             && let Some(analysis) = lpc::analyze(
                 samples,
@@ -562,7 +578,7 @@ mod tests {
             bits_per_sample,
             &mut decoded,
         )
-        .unwrap();
+        .expect("サブフレームデコードに成功するはず");
         assert_eq!(decoded, samples);
     }
 
@@ -644,7 +660,8 @@ mod tests {
         let data = [0x03, 0x58, 0xFD];
         let mut reader = BitReader::new(&data);
         let mut samples = Vec::new();
-        decode_subframe(&mut reader, 1, 16, &mut samples).unwrap();
+        decode_subframe(&mut reader, 1, 16, &mut samples)
+            .expect("サブフレームデコードに成功するはず");
         // 6397 << 2 = 25588
         assert_eq!(samples, [25588]);
     }

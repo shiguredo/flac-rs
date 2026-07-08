@@ -417,22 +417,17 @@ fn compute_residual_generic(
     }
 }
 
-/// 絶対値 (no_std では `f64::abs` が使えないため自前実装)
-fn fabs(x: f64) -> f64 {
-    if x < 0.0 { -x } else { x }
-}
-
-/// log2 の近似 (no_std では `f64::log2` が使えないため自前実装)
+/// log2 の近似 (標準 `f64::log2` より高速で、次数選択のヒューリスティックには十分な精度)
 ///
 /// f64 のビット表現から指数部を取り出し、仮数部で線形補間する。
-/// 誤差は 0.09 以下で、次数選択のヒューリスティックには十分な精度。
+/// log2(1+m) ≈ m の近似を使い、誤差は 0.09 以下。
 /// 正の有限値に対してのみ使うこと。
 fn approx_log2(x: f64) -> f64 {
     debug_assert!(x > 0.0, "approx_log2 は正の値のみ (実装バグ)");
     let bits = x.to_bits();
     let exponent = ((bits >> 52) & 0x7FF) as i64 - 1023;
     let mantissa = (bits & 0xF_FFFF_FFFF_FFFF) as f64 / (1u64 << 52) as f64;
-    // log2(2^e * (1 + m)) = e + log2(1 + m) ≈ e + m
+    // 指数部と仮数部から近似: log2(2^e * (1 + m)) = e + log2(1 + m) ≈ e + m
     exponent as f64 + mantissa
 }
 
@@ -635,7 +630,7 @@ fn quantize_coefficients(coefficients: &[f64], precision: u32) -> (Vec<i64>, u32
     // 最大絶対値から必要なシフト量を求める
     let max_magnitude = coefficients
         .iter()
-        .fold(0.0f64, |acc, &c| if fabs(c) > acc { fabs(c) } else { acc });
+        .fold(0.0f64, |acc, &c| if c.abs() > acc { c.abs() } else { acc });
     if max_magnitude == 0.0 {
         // 全係数 0 (無音など)。シフト 0 で全て 0 の係数を返す
         return (coefficients.iter().map(|_| 0).collect(), 0);
@@ -758,7 +753,8 @@ mod tests {
     #[test]
     fn restore_rfc9639_appendix_d3() {
         let mut samples: Vec<i64> = alloc::vec![0, 79, 111, 3, -1, -13, -10, -6, 2, 8, 8, 6];
-        restore_samples(&mut samples, &[7, -6, 2], 2, LOW8, HIGH8).unwrap();
+        restore_samples(&mut samples, &[7, -6, 2], 2, LOW8, HIGH8)
+            .expect("サンプル復元に成功するはず");
         assert_eq!(samples, [0, 79, 111, 78, 8, -61, -90, -68, -13, 42, 67, 53]);
     }
 
@@ -793,7 +789,8 @@ mod tests {
         compute_residual(&signal, &coefficients, shift, &mut residual);
         let mut restored = signal[..3].to_vec();
         restored.extend_from_slice(&residual);
-        restore_samples(&mut restored, &coefficients, shift, LOW16, HIGH16).unwrap();
+        restore_samples(&mut restored, &coefficients, shift, LOW16, HIGH16)
+            .expect("サンプル復元に成功するはず");
         assert_eq!(restored, signal);
     }
 

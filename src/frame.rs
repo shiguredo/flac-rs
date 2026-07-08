@@ -417,7 +417,7 @@ impl FrameHeader {
             writer.write_u32(value, bits);
         }
 
-        // CRC-8 (RFC 9639 Section 9.1.8)
+        // CRC-8 の計算と書き込み (RFC 9639 Section 9.1.8)
         debug_assert!(
             writer.is_byte_aligned(),
             "CRC-8 の位置はバイト境界 (実装バグ)"
@@ -438,7 +438,8 @@ mod tests {
     fn decode_frame_header_rfc9639_appendix_d1() {
         let data = [0xFF, 0xF8, 0x69, 0x18, 0x00, 0x00, 0xBF];
         let mut reader = BitReader::new(&data);
-        let header = FrameHeader::decode(&mut reader).unwrap();
+        let header =
+            FrameHeader::decode(&mut reader).expect("フレームヘッダーデコードに成功するはず");
         assert_eq!(header.blocking_strategy, BlockingStrategy::Fixed);
         assert_eq!(header.block_size, 1);
         assert_eq!(header.sample_rate, Some(44_100));
@@ -453,7 +454,8 @@ mod tests {
     fn decode_frame_header_rfc9639_appendix_d2() {
         let data = [0xFF, 0xF8, 0x69, 0x98, 0x00, 0x0F, 0x99];
         let mut reader = BitReader::new(&data);
-        let header = FrameHeader::decode(&mut reader).unwrap();
+        let header =
+            FrameHeader::decode(&mut reader).expect("フレームヘッダーデコードに成功するはず");
         assert_eq!(header.blocking_strategy, BlockingStrategy::Fixed);
         assert_eq!(header.block_size, 16);
         assert_eq!(header.sample_rate, Some(44_100));
@@ -532,10 +534,13 @@ mod tests {
         ];
         for header in headers {
             let mut writer = BitWriter::new();
-            header.encode(&mut writer).unwrap();
+            header
+                .encode(&mut writer)
+                .expect("フレームヘッダーエンコードに成功するはず");
             let bytes = writer.into_bytes();
             let mut reader = BitReader::new(&bytes);
-            let decoded = FrameHeader::decode(&mut reader).unwrap();
+            let decoded =
+                FrameHeader::decode(&mut reader).expect("フレームヘッダーデコードに成功するはず");
             assert_eq!(decoded, header);
         }
     }
@@ -553,10 +558,13 @@ mod tests {
                 coded_number: 1,
             };
             let mut writer = BitWriter::new();
-            header.encode(&mut writer).unwrap();
+            header
+                .encode(&mut writer)
+                .expect("フレームヘッダーエンコードに成功するはず");
             let bytes = writer.into_bytes();
             let mut reader = BitReader::new(&bytes);
-            let decoded = FrameHeader::decode(&mut reader).unwrap();
+            let decoded =
+                FrameHeader::decode(&mut reader).expect("フレームヘッダーデコードに成功するはず");
             assert_eq!(decoded.sample_rate, Some(rate), "rate {}", rate);
         }
     }
@@ -574,7 +582,10 @@ mod tests {
 
         let data = [0xFE, 0xAF, 0x9F, 0xB5, 0xA3, 0xB8, 0x80];
         let mut reader = BitReader::new(&data);
-        assert_eq!(decode_coded_number(&mut reader).unwrap(), 51_000_000_000);
+        assert_eq!(
+            decode_coded_number(&mut reader).expect("coded numberデコードに成功するはず"),
+            51_000_000_000
+        );
     }
 
     #[test]
@@ -602,7 +613,7 @@ mod tests {
             let bytes = writer.into_bytes();
             let mut reader = BitReader::new(&bytes);
             assert_eq!(
-                decode_coded_number(&mut reader).unwrap(),
+                decode_coded_number(&mut reader).expect("coded numberデコードに成功するはず"),
                 value,
                 "value {}",
                 value

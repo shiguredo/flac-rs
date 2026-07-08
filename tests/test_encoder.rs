@@ -6,9 +6,9 @@
 mod helpers;
 
 use helpers::pseudo_random_samples;
-use shiguredo_flac::EncodeError;
 use shiguredo_flac::decoder;
 use shiguredo_flac::encoder::{StreamEncoder, StreamEncoderConfig, encode};
+use shiguredo_flac::error::EncodeError;
 use shiguredo_flac::metadata::{MetadataBlock, StreamInfo};
 use shiguredo_flac::vorbis_comment::{VorbisComment, VorbisCommentField};
 
@@ -143,7 +143,7 @@ fn compression_beats_verbatim_for_predictable_signal() {
         channels: 1,
         ..StreamEncoderConfig::default()
     };
-    let encoded = encode(config, &samples).unwrap();
+    let encoded = encode(config, &samples).expect("エンコードに成功するはず");
     assert!(
         encoded.len() < samples.len() * 2,
         "圧縮後 {} バイトは元の {} バイトより小さいはず",
@@ -168,8 +168,8 @@ fn metadata_blocks_are_preserved() {
         ],
         ..StreamEncoderConfig::default()
     };
-    let encoded = encode(config, &[1, 2, 3, 4]).unwrap();
-    let decoded = decoder::decode(&encoded).unwrap();
+    let encoded = encode(config, &[1, 2, 3, 4]).expect("エンコードに成功するはず");
+    let decoded = decoder::decode(&encoded).expect("デコードに成功するはず");
     // STREAMINFO + VORBIS_COMMENT + PADDING
     assert_eq!(decoded.metadata.len(), 3);
     assert_eq!(decoded.metadata[1], MetadataBlock::VorbisComment(comment));
@@ -183,7 +183,7 @@ fn rejects_out_of_range_sample() {
         bits_per_sample: 8,
         ..StreamEncoderConfig::default()
     };
-    let mut encoder = StreamEncoder::new(config).unwrap();
+    let mut encoder = StreamEncoder::new(config).expect("エンコーダー作成に成功するはず");
     assert!(matches!(
         encoder.push_samples(&[128]),
         Err(EncodeError::SampleOutOfRange { .. })
@@ -193,13 +193,14 @@ fn rejects_out_of_range_sample() {
         bits_per_sample: 8,
         ..StreamEncoderConfig::default()
     };
-    let mut encoder = StreamEncoder::new(config).unwrap();
+    let mut encoder = StreamEncoder::new(config).expect("エンコーダー作成に成功するはず");
     assert!(encoder.push_samples(&[127, -128]).is_ok());
 }
 
 #[test]
 fn rejects_unaligned_sample_count() {
-    let mut encoder = StreamEncoder::new(StreamEncoderConfig::default()).unwrap();
+    let mut encoder =
+        StreamEncoder::new(StreamEncoderConfig::default()).expect("エンコーダー作成に成功するはず");
     assert!(matches!(
         encoder.push_samples(&[1, 2, 3]),
         Err(EncodeError::UnalignedSamples { .. })
@@ -286,8 +287,9 @@ fn rejects_duplicate_vorbis_comment_metadata() {
 #[test]
 fn streaminfo_frame_sizes_are_recorded() {
     let samples = pseudo_random_samples(4096 * 3 * 2, 16, 99);
-    let encoded = encode(StreamEncoderConfig::default(), &samples).unwrap();
-    let decoded = decoder::decode(&encoded).unwrap();
+    let encoded =
+        encode(StreamEncoderConfig::default(), &samples).expect("エンコードに成功するはず");
+    let decoded = decoder::decode(&encoded).expect("デコードに成功するはず");
     let info = &decoded.stream_info;
     assert!(info.min_frame_size > 0);
     assert!(info.min_frame_size <= info.max_frame_size);

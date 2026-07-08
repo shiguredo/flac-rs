@@ -40,7 +40,9 @@ fn picture_type_conversion_roundtrip() {
 
 #[test]
 fn decode_rejects_truncated_payload() {
-    let payload = sample_picture().encode_payload().unwrap();
+    let payload = sample_picture()
+        .encode_payload()
+        .expect("Picture エンコードに成功するはず");
     for len in [0, 3, 7, payload.len() - 1] {
         assert!(Picture::decode(&payload[..len]).is_err(), "長さ {}", len);
     }
@@ -48,7 +50,9 @@ fn decode_rejects_truncated_payload() {
 
 #[test]
 fn decode_rejects_trailing_bytes() {
-    let mut payload = sample_picture().encode_payload().unwrap();
+    let mut payload = sample_picture()
+        .encode_payload()
+        .expect("Picture エンコードに成功するはず");
     payload.push(0);
     assert!(Picture::decode(&payload).is_err());
 }
@@ -56,7 +60,9 @@ fn decode_rejects_trailing_bytes() {
 #[test]
 fn decode_rejects_non_ascii_media_type() {
     let picture = sample_picture();
-    let mut payload = picture.encode_payload().unwrap();
+    let mut payload = picture
+        .encode_payload()
+        .expect("Picture エンコードに成功するはず");
     // media_type の先頭バイトを非 ASCII にする
     payload[8] = 0xFF;
     assert!(Picture::decode(&payload).is_err());

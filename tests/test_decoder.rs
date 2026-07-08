@@ -6,14 +6,15 @@
 mod helpers;
 
 use helpers::{rfc9639_appendix_d1_file, rfc9639_appendix_d2_file, rfc9639_appendix_d3_file};
-use shiguredo_flac::DecodeError;
 use shiguredo_flac::decoder::{StreamDecoder, decode};
+use shiguredo_flac::error::DecodeError;
 use shiguredo_flac::metadata::MetadataBlock;
 
 /// RFC 9639 Appendix D.1: 2 チャンネル 1 サンプル (verbatim + wasted bits)
 #[test]
 fn decode_rfc9639_appendix_d1() {
-    let decoded = decode(&rfc9639_appendix_d1_file()).unwrap();
+    let decoded = decode(&rfc9639_appendix_d1_file())
+        .expect("RFC 9639 Appendix D.1 のデコードに成功するはず");
     assert_eq!(decoded.channels, 2);
     assert_eq!(decoded.sample_rate, 44100);
     assert_eq!(decoded.bits_per_sample, 16);
@@ -24,7 +25,8 @@ fn decode_rfc9639_appendix_d1() {
 /// RFC 9639 Appendix D.2: side-right ステレオと固定予測
 #[test]
 fn decode_rfc9639_appendix_d2() {
-    let decoded = decode(&rfc9639_appendix_d2_file()).unwrap();
+    let decoded = decode(&rfc9639_appendix_d2_file())
+        .expect("RFC 9639 Appendix D.2 のデコードに成功するはず");
     assert_eq!(decoded.channels, 2);
     assert_eq!(decoded.stream_info.total_samples, 19);
     // 最初の 2 インターチャンネルサンプル (RFC 9639 Appendix D.2.7 Table 41)
@@ -44,7 +46,8 @@ fn decode_rfc9639_appendix_d2() {
 /// RFC 9639 Appendix D.3: LPC とエスケープパーティション
 #[test]
 fn decode_rfc9639_appendix_d3() {
-    let decoded = decode(&rfc9639_appendix_d3_file()).unwrap();
+    let decoded = decode(&rfc9639_appendix_d3_file())
+        .expect("RFC 9639 Appendix D.3 のデコードに成功するはず");
     assert_eq!(decoded.channels, 1);
     assert_eq!(decoded.sample_rate, 32000);
     assert_eq!(decoded.bits_per_sample, 8);
@@ -64,12 +67,18 @@ fn decode_frame_with_byte_by_byte_feed() {
     let mut frames = Vec::new();
     for &byte in &file {
         decoder.feed(&[byte]);
-        while let Some(frame) = decoder.decode_frame().unwrap() {
+        while let Some(frame) = decoder
+            .decode_frame()
+            .expect("フレームデコードに成功するはず")
+        {
             frames.push(frame);
         }
     }
     decoder.finish();
-    while let Some(frame) = decoder.decode_frame().unwrap() {
+    while let Some(frame) = decoder
+        .decode_frame()
+        .expect("フレームデコードに成功するはず")
+    {
         frames.push(frame);
     }
     assert_eq!(frames.len(), 2);
@@ -171,7 +180,12 @@ fn decode_needs_more_data_returns_none() {
     let mut decoder = StreamDecoder::new();
     decoder.feed(&file[..10]);
     // finish() していないのでデータ不足は None
-    assert_eq!(decoder.decode_frame().unwrap(), None);
+    assert_eq!(
+        decoder
+            .decode_frame()
+            .expect("フレームデコードに成功するはず"),
+        None
+    );
 }
 
 #[test]
@@ -181,7 +195,9 @@ fn stream_info_available_after_first_decode_attempt() {
     decoder.feed(&file);
     decoder.finish();
     assert!(decoder.stream_info().is_none());
-    let _ = decoder.decode_frame().unwrap();
+    let _ = decoder
+        .decode_frame()
+        .expect("フレームデコードに成功するはず");
     let info = decoder
         .stream_info()
         .expect("STREAMINFO がデコード済みのはず");

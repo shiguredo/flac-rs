@@ -110,8 +110,8 @@ impl WavReader {
                 8 => i32::from(chunk[0]) - 128,
                 16 => i32::from(i16::from_le_bytes([chunk[0], chunk[1]])),
                 24 => {
-                    // 24 bit を符号拡張する
-                    i32::from_le_bytes([chunk[0], chunk[1], chunk[2], 0]) << 8 >> 8
+                    // 24 bit を符号拡張する (算術シフトを避け、まず unsigned で左シフトしてから signed に戻す)
+                    ((u32::from_le_bytes([chunk[0], chunk[1], chunk[2], 0]) << 8) as i32) >> 8
                 }
                 _ => i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]),
             };

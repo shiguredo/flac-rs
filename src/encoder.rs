@@ -9,7 +9,7 @@
 //! ```rust
 //! use shiguredo_flac::encoder::{StreamEncoder, StreamEncoderConfig};
 //!
-//! # fn main() -> Result<(), shiguredo_flac::EncodeError> {
+//! # fn main() -> Result<(), shiguredo_flac::error::EncodeError> {
 //! let config = StreamEncoderConfig {
 //!     sample_rate: 44100,
 //!     channels: 2,
@@ -133,6 +133,7 @@ impl StreamEncoder {
                 config.bits_per_sample
             )));
         }
+        // u16 型のため 65535 以下は型システムで保証される
         if config.block_size < 16 {
             return Err(EncodeError::InvalidConfig(format!(
                 "block size must be 16-65535, got {} (RFC 9639 Section 8.2)",
@@ -145,6 +146,8 @@ impl StreamEncoder {
                 config.max_lpc_order
             )));
         }
+        // RFC 9639 Section 7 (Streamable Subset) では max_partition_order <= 8 だが、
+        // 本エンコーダーは 9-15 も非ストリーミング用途として許容する
         if config.max_partition_order > 15 {
             return Err(EncodeError::InvalidConfig(format!(
                 "max partition order must be 0-15, got {} (RFC 9639 Section 9.2.7)",
@@ -299,9 +302,10 @@ impl StreamEncoder {
             let block: Vec<i32> = core::mem::take(&mut self.pending);
             self.encode_frame(&block)?;
         }
-
-        // STREAMINFO を確定値で書き直す (fLaC 4 バイト + ブロックヘッダー
-        // 4 バイトに続く 34 バイト)
+        // STREAMINFO のペイロードを確定値で書き直す。
+        // ペイロードは fLaC (4 バイト) + ブロックヘッダー (4 バイト) の直後にある。
+        const STREAMINFO_OFFSET: usize = 8;
+        const STREAMINFO_PAYLOAD_LEN: usize = 34;
         let streaminfo = StreamInfo {
             min_block_size: self.config.block_size,
             max_block_size: self.config.block_size,
@@ -311,10 +315,11 @@ impl StreamEncoder {
             channels: self.config.channels,
             bits_per_sample: self.config.bits_per_sample,
             total_samples: self.samples_encoded,
-            md5: self.md5.clone().finalize(),
+            md5: self.md5.finalize(),
         };
         let payload = streaminfo.encode_payload()?;
-        self.out[8..8 + 34].copy_from_slice(&payload);
+        self.out[STREAMINFO_OFFSET..STREAMINFO_OFFSET + STREAMINFO_PAYLOAD_LEN]
+            .copy_from_slice(&payload);
         Ok(self.out)
     }
 

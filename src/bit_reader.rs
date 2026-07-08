@@ -246,10 +246,22 @@ mod tests {
         // 0b1010_1100 0b0101_0011
         let data = [0xAC, 0x53];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_u32(1).unwrap(), 0b1);
-        assert_eq!(reader.read_u32(3).unwrap(), 0b010);
-        assert_eq!(reader.read_u32(4).unwrap(), 0b1100);
-        assert_eq!(reader.read_u32(8).unwrap(), 0x53);
+        assert_eq!(
+            reader.read_u32(1).expect("1ビット読み取りに成功するはず"),
+            0b1
+        );
+        assert_eq!(
+            reader.read_u32(3).expect("3ビット読み取りに成功するはず"),
+            0b010
+        );
+        assert_eq!(
+            reader.read_u32(4).expect("4ビット読み取りに成功するはず"),
+            0b1100
+        );
+        assert_eq!(
+            reader.read_u32(8).expect("8ビット読み取りに成功するはず"),
+            0x53
+        );
         // 全部読み切ったので次はデータ不足
         assert_eq!(reader.read_u32(1), Err(BitReadError::UnexpectedEof));
     }
@@ -259,8 +271,14 @@ mod tests {
         let data = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x11];
         let mut reader = BitReader::new(&data);
         // バイト境界をまたぐ 4 + 64 ビット読み
-        assert_eq!(reader.read_u32(4).unwrap(), 0x1);
-        assert_eq!(reader.read_u64(64).unwrap(), 0x23456789ABCDEF01);
+        assert_eq!(
+            reader.read_u32(4).expect("4ビット読み取りに成功するはず"),
+            0x1
+        );
+        assert_eq!(
+            reader.read_u64(64).expect("64ビット読み取りに成功するはず"),
+            0x23456789ABCDEF01
+        );
     }
 
     #[test]
@@ -268,9 +286,18 @@ mod tests {
         // 端数位置からの 58-64 ビット読みは内部で 2 回に分かれる
         let data = [0xFF; 17];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_u32(3).unwrap(), 0b111);
-        assert_eq!(reader.read_u64(58).unwrap(), (1u64 << 58) - 1);
-        assert_eq!(reader.read_u64(64).unwrap(), u64::MAX);
+        assert_eq!(
+            reader.read_u32(3).expect("3ビット読み取りに成功するはず"),
+            0b111
+        );
+        assert_eq!(
+            reader.read_u64(58).expect("58ビット読み取りに成功するはず"),
+            (1u64 << 58) - 1
+        );
+        assert_eq!(
+            reader.read_u64(64).expect("64ビット読み取りに成功するはず"),
+            u64::MAX
+        );
         assert_eq!(reader.position_bits(), 3 + 58 + 64);
     }
 
@@ -278,7 +305,10 @@ mod tests {
     fn read_zero_bits() {
         let data = [0xFF];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_u64(0).unwrap(), 0);
+        assert_eq!(
+            reader.read_u64(0).expect("0ビット読み取りに成功するはず"),
+            0
+        );
         assert_eq!(reader.position_bits(), 0);
     }
 
@@ -287,15 +317,30 @@ mod tests {
         // 4 ビットの -1 (0b1111) と 3 (0b0011)
         let data = [0b1111_0011];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_i64(4).unwrap(), -1);
-        assert_eq!(reader.read_i64(4).unwrap(), 3);
+        assert_eq!(
+            reader
+                .read_i64(4)
+                .expect("符号付き4ビット読み取りに成功するはず"),
+            -1
+        );
+        assert_eq!(
+            reader
+                .read_i64(4)
+                .expect("符号付き4ビット読み取りに成功するはず"),
+            3
+        );
     }
 
     #[test]
     fn read_i64_full_64bits() {
         let data = u64::MAX.to_be_bytes();
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_i64(64).unwrap(), -1);
+        assert_eq!(
+            reader
+                .read_i64(64)
+                .expect("符号付き64ビット読み取りに成功するはず"),
+            -1
+        );
     }
 
     #[test]
@@ -303,9 +348,9 @@ mod tests {
         // 5 は 0b000001 (RFC 9639 Section 5)
         let data = [0b0000_0110, 0b0000_0000];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_unary().unwrap(), 5);
+        assert_eq!(reader.read_unary().expect("unary読み取りに成功するはず"), 5);
         // 続き: 0b10... → 0 個の 0 のあと 1
-        assert_eq!(reader.read_unary().unwrap(), 0);
+        assert_eq!(reader.read_unary().expect("unary読み取りに成功するはず"), 0);
         // 残り 8 ビットは全部 0 なので終端記号の 1 が現れず EOF
         assert_eq!(reader.read_unary(), Err(BitReadError::UnexpectedEof));
     }
@@ -316,7 +361,10 @@ mod tests {
         let mut data = [0u8; 10];
         data[9] = 0b1000_0000;
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_unary().unwrap(), 72);
+        assert_eq!(
+            reader.read_unary().expect("unary読み取りに成功するはず"),
+            72
+        );
         assert_eq!(reader.position_bits(), 73);
     }
 
@@ -326,19 +374,22 @@ mod tests {
         // quotient 4 (0b00001) + remainder 6 (0b110) = 0b00001110
         let data = [0b0000_1110];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_rice(3).unwrap(), 38);
+        assert_eq!(reader.read_rice(3).expect("Rice読み取りに成功するはず"), 38);
 
         // キャッシュの補充をまたぐ長い quotient (低速パス) も同じ値になる
         let mut data = [0u8; 12];
         data[8] = 0b0000_0001; // 71 個の 0 + 終端 1
         data[9] = 0b1010_0000; // remainder 0b101
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_rice(3).unwrap(), (71 << 3) | 0b101);
+        assert_eq!(
+            reader.read_rice(3).expect("Rice読み取りに成功するはず"),
+            (71 << 3) | 0b101
+        );
 
         // パラメータ 0 (remainder なし) は unary と同じ
         let data = [0b0010_0000];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_rice(0).unwrap(), 2);
+        assert_eq!(reader.read_rice(0).expect("Rice読み取りに成功するはず"), 2);
 
         // データ不足
         let data = [0b0000_0000];
@@ -350,11 +401,22 @@ mod tests {
     fn read_bytes_and_align() {
         let data = [0xAB, 0xCD, 0xEF];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_u32(3).unwrap(), 0b101);
+        assert_eq!(
+            reader.read_u32(3).expect("3ビット読み取りに成功するはず"),
+            0b101
+        );
         // バイト境界まで読み飛ばす (残り 5 ビット: 0b01011)
-        assert_eq!(reader.align_to_byte().unwrap(), 0b01011);
+        assert_eq!(
+            reader
+                .align_to_byte()
+                .expect("バイト境界調整に成功するはず"),
+            0b01011
+        );
         assert!(reader.is_byte_aligned());
-        assert_eq!(reader.read_bytes(2).unwrap(), &[0xCD, 0xEF]);
+        assert_eq!(
+            reader.read_bytes(2).expect("2バイト読み取りに成功するはず"),
+            &[0xCD, 0xEF]
+        );
         assert_eq!(reader.read_bytes(1), Err(BitReadError::UnexpectedEof));
     }
 
@@ -363,18 +425,32 @@ mod tests {
         // キャッシュに取り込み済みのバイトが read_bytes で正しく巻き戻る
         let data = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x11, 0x22];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.read_u32(8).unwrap(), 0x12);
+        assert_eq!(
+            reader.read_u32(8).expect("8ビット読み取りに成功するはず"),
+            0x12
+        );
         // この時点でキャッシュには後続バイトが取り込まれている
-        assert_eq!(reader.read_bytes(3).unwrap(), &[0x34, 0x56, 0x78]);
+        assert_eq!(
+            reader.read_bytes(3).expect("3バイト読み取りに成功するはず"),
+            &[0x34, 0x56, 0x78]
+        );
         assert_eq!(reader.position_bits(), 4 * 8);
-        assert_eq!(reader.read_u32(8).unwrap(), 0x9A);
+        assert_eq!(
+            reader.read_u32(8).expect("8ビット読み取りに成功するはず"),
+            0x9A
+        );
     }
 
     #[test]
     fn align_at_boundary_is_noop() {
         let data = [0xFF];
         let mut reader = BitReader::new(&data);
-        assert_eq!(reader.align_to_byte().unwrap(), 0);
+        assert_eq!(
+            reader
+                .align_to_byte()
+                .expect("バイト境界調整に成功するはず"),
+            0
+        );
         assert_eq!(reader.position_bits(), 0);
     }
 }

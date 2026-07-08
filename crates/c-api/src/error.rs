@@ -3,7 +3,7 @@
 //! C API で細かくエラー型が分かれていると煩雑なので、ひとつに集約している
 //!
 //! エラーの詳細メッセージは各インスタンスの `*_get_last_error()` で取得できる
-use shiguredo_flac::{DecodeError, EncodeError};
+use shiguredo_flac::error::{DecodeError, EncodeError};
 
 /// 発生する可能性のあるエラーの種類を表現する列挙型
 #[repr(C)]

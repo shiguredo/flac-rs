@@ -257,9 +257,23 @@ mod tests {
         let bytes = writer.into_bytes();
 
         let mut reader = BitReader::new(&bytes);
-        assert_eq!(reader.read_u64(40).unwrap(), 0x123456789A);
-        assert_eq!(reader.read_i64(20).unwrap(), -12345);
-        assert_eq!(reader.read_unary().unwrap(), 17);
-        assert_eq!(reader.read_u32(2).unwrap(), 0b11);
+        assert_eq!(
+            reader.read_u64(40).expect("40ビット読み取りに成功するはず"),
+            0x123456789A
+        );
+        assert_eq!(
+            reader
+                .read_i64(20)
+                .expect("符号付き20ビット読み取りに成功するはず"),
+            -12345
+        );
+        assert_eq!(
+            reader.read_unary().expect("unary読み取りに成功するはず"),
+            17
+        );
+        assert_eq!(
+            reader.read_u32(2).expect("2ビット読み取りに成功するはず"),
+            0b11
+        );
     }
 }

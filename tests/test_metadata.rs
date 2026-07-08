@@ -22,7 +22,8 @@ fn appendix_d1_streaminfo_payload() -> Vec<u8> {
 
 #[test]
 fn decode_streaminfo_rfc9639_appendix_d1() {
-    let info = StreamInfo::decode(&appendix_d1_streaminfo_payload()).unwrap();
+    let info = StreamInfo::decode(&appendix_d1_streaminfo_payload())
+        .expect("STREAMINFO デコードに成功するはず");
     assert_eq!(info.min_block_size, 4096);
     assert_eq!(info.max_block_size, 4096);
     assert_eq!(info.min_frame_size, 15);
@@ -40,7 +41,8 @@ fn decode_streaminfo_rfc9639_appendix_d1() {
     );
     // エンコードすると元のバイト列に戻る
     assert_eq!(
-        info.encode_payload().unwrap(),
+        info.encode_payload()
+            .expect("STREAMINFO エンコードに成功するはず"),
         appendix_d1_streaminfo_payload()
     );
 }
@@ -156,18 +158,23 @@ fn application_rejects_short_payload() {
 #[test]
 fn padding_block_header_encoding() {
     let block = MetadataBlock::Padding { size: 10 };
-    let encoded = block.encode(true).unwrap();
+    let encoded = block
+        .encode(true)
+        .expect("パディングブロックエンコードに成功するはず");
     // ヘッダー: last フラグ + タイプ 1、サイズ 10
     assert_eq!(encoded[0], 0x81);
     assert_eq!(&encoded[1..4], &[0x00, 0x00, 0x0a]);
     assert_eq!(encoded.len(), 4 + 10);
-    let encoded = block.encode(false).unwrap();
+    let encoded = block
+        .encode(false)
+        .expect("パディングブロックエンコードに成功するはず");
     assert_eq!(encoded[0], 0x01);
 }
 
 #[test]
 fn unknown_block_preserves_data() {
-    let block = MetadataBlock::decode(100, &[0xde, 0xad]).unwrap();
+    let block =
+        MetadataBlock::decode(100, &[0xde, 0xad]).expect("Unknownブロックデコードに成功するはず");
     assert_eq!(
         block,
         MetadataBlock::Unknown {
@@ -175,7 +182,12 @@ fn unknown_block_preserves_data() {
             data: vec![0xde, 0xad],
         }
     );
-    assert_eq!(block.encode_payload().unwrap(), vec![0xde, 0xad]);
+    assert_eq!(
+        block
+            .encode_payload()
+            .expect("Unknownブロックエンコードに成功するはず"),
+        vec![0xde, 0xad]
+    );
 }
 
 #[test]

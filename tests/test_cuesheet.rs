@@ -55,14 +55,18 @@ fn media_catalog_number_str_strips_padding() {
 
 #[test]
 fn decode_rejects_truncated_payload() {
-    let payload = sample_cuesheet().encode_payload().unwrap();
+    let payload = sample_cuesheet()
+        .encode_payload()
+        .expect("CUESHEET エンコードに成功するはず");
     assert!(Cuesheet::decode(&payload[..payload.len() - 1]).is_err());
     assert!(Cuesheet::decode(&payload[..100]).is_err());
 }
 
 #[test]
 fn decode_rejects_trailing_bytes() {
-    let mut payload = sample_cuesheet().encode_payload().unwrap();
+    let mut payload = sample_cuesheet()
+        .encode_payload()
+        .expect("CUESHEET エンコードに成功するはず");
     payload.push(0);
     assert!(Cuesheet::decode(&payload).is_err());
 }
@@ -75,7 +79,9 @@ fn rejects_zero_tracks() {
     assert!(cuesheet.encode_payload().is_err());
 
     // デコード側: トラック数 0 のペイロードを拒否する
-    let mut payload = sample_cuesheet().encode_payload().unwrap();
+    let mut payload = sample_cuesheet()
+        .encode_payload()
+        .expect("CUESHEET エンコードに成功するはず");
     payload[128 + 8 + 1 + 258] = 0; // トラック数フィールドを 0 にする
     let payload = &payload[..128 + 8 + 1 + 258 + 1];
     assert!(Cuesheet::decode(payload).is_err());
@@ -92,7 +98,9 @@ fn encode_rejects_track_number_zero() {
 
 #[test]
 fn decode_rejects_non_ascii_catalog_number() {
-    let mut payload = sample_cuesheet().encode_payload().unwrap();
+    let mut payload = sample_cuesheet()
+        .encode_payload()
+        .expect("CUESHEET エンコードに成功するはず");
     payload[0] = 0xFF;
     assert!(Cuesheet::decode(&payload).is_err());
 }

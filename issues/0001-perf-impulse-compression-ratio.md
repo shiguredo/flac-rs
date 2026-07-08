@@ -2,11 +2,10 @@
 
 - Priority: Medium
 - Created: 2026-07-04
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-08
 - Model: Fable 5
 - Branch: feature/update-impulse-compression
-- Polished: {YYYY-MM-DD}
-
+- Polished: 2026-07-04
 ## 目的
 
 疎なインパルス列 (ほぼ無音 + 時折スパイク) で、flac-rs のフレームデータサイズが本家 flac より 30% (-5 比) 〜 77% (-8 比) 大きい。打楽器・クリック音・無音の多い素材など現実に存在する信号クラスでの系統的な劣化なので、原因を特定し、圧縮率と速度のトレードオフを評価したうえで改善の採否を決める。

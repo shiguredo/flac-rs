@@ -12,8 +12,9 @@ use crate::bit_writer::BitWriter;
 use crate::error::{DecodeError, ParseError};
 
 /// 残差サンプルは 32 bit 符号付き (最小値除く) に収まらなければならない
-/// (RFC 9639 Section 9.2.7.3)。folded 表現では u32 の範囲に対応する
-const MAX_FOLDED_RESIDUAL: u64 = u32::MAX as u64;
+/// (RFC 9639 Section 9.2.7.3)。folded 表現では [0, 2^32-2] に対応する
+/// (2^32-1 は signed の最負値 -2^31 に対応し RFC で除外されている)
+const MAX_FOLDED_RESIDUAL: u64 = (u32::MAX - 1) as u64;
 
 /// Rice パラメータの最大値
 ///
@@ -657,7 +658,7 @@ mod tests {
 
         let mut reader = BitReader::new(&bytes);
         let mut out = Vec::new();
-        decode_residual(&mut reader, 16, 1, &mut out).unwrap();
+        decode_residual(&mut reader, 16, 1, &mut out).expect("残差デコードに成功するはず");
         assert_eq!(
             out,
             [
@@ -723,7 +724,7 @@ mod tests {
         let bytes = writer.into_bytes();
         let mut reader = BitReader::new(&bytes);
         let mut out = Vec::new();
-        decode_residual(&mut reader, 8, 0, &mut out).unwrap();
+        decode_residual(&mut reader, 8, 0, &mut out).expect("残差デコードに成功するはず");
         assert_eq!(out, residual);
     }
 
@@ -747,7 +748,7 @@ mod tests {
         assert_eq!(bytes.len(), (plan.bits() as usize).div_ceil(8));
         let mut reader = BitReader::new(&bytes);
         let mut out = Vec::new();
-        decode_residual(&mut reader, 256, 0, &mut out).unwrap();
+        decode_residual(&mut reader, 256, 0, &mut out).expect("残差デコードに成功するはず");
         assert_eq!(out, residual);
     }
 
@@ -761,7 +762,7 @@ mod tests {
         let bytes = writer.into_bytes();
         let mut reader = BitReader::new(&bytes);
         let mut out = Vec::new();
-        decode_residual(&mut reader, 256, 4, &mut out).unwrap();
+        decode_residual(&mut reader, 256, 4, &mut out).expect("残差デコードに成功するはず");
         assert_eq!(out, residual);
     }
 
@@ -775,7 +776,7 @@ mod tests {
         let bytes = writer.into_bytes();
         let mut reader = BitReader::new(&bytes);
         let mut out = Vec::new();
-        decode_residual(&mut reader, 16, 0, &mut out).unwrap();
+        decode_residual(&mut reader, 16, 0, &mut out).expect("残差デコードに成功するはず");
         assert_eq!(out, residual);
     }
 

@@ -110,8 +110,8 @@ fn decode_pcm(data: &[u8], bits_per_sample: u16) -> io::Result<Vec<i32>> {
     for chunk in data.chunks_exact(bytes_per_sample) {
         let sample = match bits_per_sample {
             16 => i32::from(i16::from_le_bytes([chunk[0], chunk[1]])),
-            // 24 bit を符号拡張する
-            _ => i32::from_le_bytes([chunk[0], chunk[1], chunk[2], 0]) << 8 >> 8,
+            // 24 bit を符号拡張する (算術シフトを避け、まず unsigned で左シフトしてから signed に戻す)
+            _ => ((u32::from_le_bytes([chunk[0], chunk[1], chunk[2], 0]) << 8) as i32) >> 8,
         };
         samples.push(sample);
     }

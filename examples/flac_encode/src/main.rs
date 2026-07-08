@@ -84,8 +84,9 @@ fn main() -> noargs::Result<()> {
     };
     let mut encoder = StreamEncoder::new(config)?;
 
-    // WAV の PCM をブロックずつ読み込みながらエンコードする
-    let chunk = CHUNK_SAMPLES - CHUNK_SAMPLES % usize::from(reader.channels);
+    // WAV の PCM をブロックずつ読み込みながらエンコードする (チャンネル数は WAV 検証時に保証されている)
+    let channels = usize::from(reader.channels);
+    let chunk = CHUNK_SAMPLES - CHUNK_SAMPLES % channels.max(1);
     let mut total_samples: u64 = 0;
     loop {
         let samples = reader.read_samples(chunk)?;

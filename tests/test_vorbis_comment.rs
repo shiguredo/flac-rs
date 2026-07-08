@@ -49,7 +49,9 @@ fn decode_rejects_trailing_bytes() {
         vendor: String::new(),
         fields: Vec::new(),
     };
-    let mut payload = comment.encode_payload().unwrap();
+    let mut payload = comment
+        .encode_payload()
+        .expect("VorbisComment エンコードに成功するはず");
     payload.push(0x00);
     assert!(VorbisComment::decode(&payload).is_err());
 }
@@ -96,6 +98,11 @@ fn value_may_contain_equals_sign() {
             value: String::from("a=b=c"),
         }],
     };
-    let payload = comment.encode_payload().unwrap();
-    assert_eq!(VorbisComment::decode(&payload).unwrap(), comment);
+    let payload = comment
+        .encode_payload()
+        .expect("VorbisComment エンコードに成功するはず");
+    assert_eq!(
+        VorbisComment::decode(&payload).expect("VorbisComment デコードに成功するはず"),
+        comment
+    );
 }

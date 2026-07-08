@@ -330,7 +330,7 @@ mod tests {
             4302, // warm-up
             3194, -1297, 1228, -943, 952, -696, 768, -524, 599, -401, -13172, -316, 274, -267, 134,
         ];
-        restore_samples(&mut samples, 1, LOW16, HIGH16).unwrap();
+        restore_samples(&mut samples, 1, LOW16, HIGH16).expect("サンプル復元に成功するはず");
         assert_eq!(
             samples,
             [
@@ -352,7 +352,8 @@ mod tests {
             assert_eq!(residual.len(), signal.len() - order);
             let mut restored = signal[..order].to_vec();
             restored.extend_from_slice(&residual);
-            restore_samples(&mut restored, order, LOW16, HIGH16).unwrap();
+            restore_samples(&mut restored, order, LOW16, HIGH16)
+                .expect("サンプル復元に成功するはず");
             assert_eq!(restored, signal, "次数 {} でラウンドトリップ失敗", order);
         }
     }

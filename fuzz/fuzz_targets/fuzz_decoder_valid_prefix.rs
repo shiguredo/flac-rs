@@ -25,6 +25,15 @@ fuzz_target!(|input: (Vec<i32>, Vec<(u16, u8)>)| {
     };
     let mut flac_bytes = encode(config, samples).expect("有効な入力のエンコードは成功するはず");
 
+    // エンコード結果が空なら破壊できないのでそのままデコードする
+    if flac_bytes.is_empty() {
+        let mut decoder = StreamDecoder::new();
+        decoder.feed(&flac_bytes);
+        decoder.finish();
+        while let Ok(Some(_frame)) = decoder.decode_frame() {}
+        return;
+    }
+
     // 任意の位置のバイトを破壊する
     for &(position, value) in &corruptions {
         let len = flac_bytes.len();

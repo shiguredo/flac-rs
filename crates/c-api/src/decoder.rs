@@ -123,7 +123,8 @@ pub struct FlacDecoder {
 
 impl FlacDecoder {
     fn set_last_error(&mut self, message: &str) {
-        self.last_error_string = CString::new(message).ok();
+        // NUL バイトを含む極めて稀なケースではメッセージを切り詰める
+        self.last_error_string = CString::new(message.split('\0').next().unwrap_or("")).ok();
     }
 }
 
