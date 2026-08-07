@@ -100,6 +100,10 @@ pub struct StreamDecoder {
     md5: Md5,
     /// MD5 計算用の作業バッファ (フレームごとの再確保を避けるため再利用する)
     md5_buf: Vec<u8>,
+    /// STREAMINFO の MD5 が既知か (全ゼロは「不明」を表す RFC 9639 Section 8.2)
+    ///
+    /// 不明ならフレームごとの MD5 計算は照合に使われないため省略する。
+    md5_known: bool,
     /// サブフレームデコードのチャンネル別作業バッファ
     /// (フレームごとの再確保を避けるため再利用する)
     channel_buf: Vec<Vec<i64>>,
@@ -124,6 +128,7 @@ impl StreamDecoder {
             metadata: Vec::new(),
             md5: Md5::new(),
             md5_buf: Vec::new(),
+            md5_known: false,
             channel_buf: Vec::new(),
             end_checked: false,
             samples_decoded: 0,
@@ -226,6 +231,7 @@ impl StreamDecoder {
                                 )));
                             }
                             self.stream_info = Some(info.clone());
+                            self.md5_known = info.md5 != [0u8; 16];
                         }
                         _ if self.stream_info.is_none() => {
                             return Err(DecodeError::InvalidData(String::from(
@@ -274,7 +280,9 @@ impl StreamDecoder {
                     return match result {
                         Ok((frame, consumed)) => {
                             self.advance(consumed);
-                            self.update_md5(&frame);
+                            if self.md5_known {
+                                self.update_md5(&frame);
+                            }
                             self.samples_decoded += u64::from(frame.header.block_size);
                             self.frames_decoded += 1;
                             Ok(Some(frame))
@@ -640,4 +648,62 @@ pub fn decode(data: &[u8]) -> Result<DecodedStream, DecodeError> {
         bits_per_sample,
         channels,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::encoder::{StreamEncoderConfig, encode};
+
+    /// MD5 が全ゼロ (不明) のストリームではフレームごとの MD5 計算がスキップされる
+    #[test]
+    fn md5_calculation_is_skipped_when_md5_is_unknown() {
+        // 正しい MD5 を持つストリームを作り、STREAMINFO の MD5 フィールドだけを
+        // ゼロに書き換える (全ゼロは「不明」を表す RFC 9639 Section 8.2)
+        let config = StreamEncoderConfig {
+            sample_rate: 44100,
+            channels: 2,
+            bits_per_sample: 16,
+            block_size: 4096,
+            ..StreamEncoderConfig::default()
+        };
+        // ステレオ 2 フレーム分 (8192 インターチャンネルサンプル = 16384 個の
+        // インターリーブ済みサンプル)
+        let samples: Vec<i32> = (0..(8192 * 2)).map(|i| (i * 7) % 1000).collect();
+        let mut flac = encode(config, &samples).expect("エンコードに成功するはず");
+        // STREAMINFO ペイロード (エンコーダー出力のオフセット 8 から 34 バイト) の
+        // 末尾 16 バイトが MD5 フィールド (RFC 9639 Section 8.2 Table 3)
+        const MD5_OFFSET: usize = 8 + 18;
+        let before = StreamInfo::decode(&flac[8..42]).expect("STREAMINFO のデコードに成功するはず");
+        assert_ne!(
+            before.md5, [0u8; 16],
+            "エンコーダーは非ゼロの MD5 を書くはず"
+        );
+        flac[MD5_OFFSET..MD5_OFFSET + 16].fill(0);
+
+        let mut decoder = StreamDecoder::new();
+        decoder.feed(&flac);
+        decoder.finish();
+        let mut frames = 0;
+        while let Some(_frame) = decoder
+            .decode_frame()
+            .expect("全ゼロ MD5 ストリームのデコードに成功するはず")
+        {
+            frames += 1;
+        }
+        // スキップ対象のフレームを実際に処理したことを保証する
+        assert_eq!(
+            frames, 2,
+            "8192 サンプルはブロックサイズ 4096 で 2 フレームになるはず"
+        );
+        assert!(
+            !decoder.md5_known,
+            "MD5 が不明なので md5_known は false のはず"
+        );
+        // update_md5 は md5_buf を resize する。呼ばれていなければ空のまま
+        assert!(
+            decoder.md5_buf.is_empty(),
+            "MD5 が不明なストリームでは update_md5 が呼ばれないはず"
+        );
+    }
 }

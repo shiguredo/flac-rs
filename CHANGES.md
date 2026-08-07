@@ -102,6 +102,9 @@
   - @voluntas
 - [UPDATE] サブフレーム計画の作業バッファと残差バッファを再利用してエンコード中の malloc を削減する
   - @voluntas
+- [UPDATE] STREAMINFO の MD5 が不明なときにデコーダーの MD5 計算をスキップして高速化する
+  - 全ゼロの MD5 は照合に使われないため、フレームごとの MD5 変換とダイジェスト計算を省略する
+  - @voluntas
 
 ### misc
 
