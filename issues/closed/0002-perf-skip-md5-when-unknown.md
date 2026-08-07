@@ -1,7 +1,7 @@
 # デコーダーの MD5 計算を STREAMINFO の MD5 が不明なときにスキップして高速化する
 
 - Created: 2026-08-07
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-07
 - Branch: feature/refactor-skip-md5-when-unknown
 - Polished: 2026-08-07
 
@@ -31,6 +31,7 @@ MD5 が非ゼロのストリームでは従来どおり計算・照合される�
 ## 解決方法
 
 - `src/decoder.rs` の `StreamDecoder` に `md5_known: bool` フィールドを追加する
-- メタデータフェーズで最後のメタデータブロックを処理した時点で `stream_info.md5 != [0u8; 16]` を判定して設定する
+- STREAMINFO メタデータブロックを処理した時点で `info.md5 != [0u8; 16]` を判定して設定する
 - `StreamDecoder::decode_frame` の成功パスを `if self.md5_known { self.update_md5(&frame); }` に変更する
 - 全ゼロ MD5 ストリームでスキップされることを検証する単体テストを追加する
+- `make compare` で相互運用 33 項目全通過、デコード速度の本家比 x0.94 で悪化なし
