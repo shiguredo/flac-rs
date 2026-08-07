@@ -3,7 +3,7 @@
 - Created: 2026-08-07
 - Completed: {YYYY-MM-DD}
 - Branch: feature/refactor-skip-md5-when-unknown
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-08-07
 
 ## 目的
 
@@ -13,7 +13,7 @@
 
 `src/decoder.rs` の `StreamDecoder::decode_frame` はフレームのデコード成功パスで毎回 `StreamDecoder::update_md5` を呼ぶ。`update_md5` は `src/md5.rs` の `samples_to_md5_bytes`（サンプル列のバイト列変換 1 パス）と `Md5::update`（ダイジェスト計算 1 パス）を実行する。
 
-一方、`StreamDecoder::verify_end` は `info.md5 != [0u8; 16]` のときしか MD5 を照合しない。RFC 9639 Section 8.2 では MD5 が全ゼロの値は「不明」を表すため、MD5 がゼロのストリームでは毎フレームの MD5 変換と計算がすべて捨てられる。`finish()` を呼ばないストリーミング用途でも MD5 が伸びることはなく、常に死重となる。
+一方、`StreamDecoder::verify_end` は `info.md5 != [0u8; 16]` のときしか MD5 を照合しない。RFC 9639 Section 8.2 は MD5 が全ゼロの値は「不明」を表すと定める（"A value of 0 signifies that the value is not known."）。そのため MD5 がゼロのストリームでは、毎フレームの MD5 変換とダイジェスト計算は照合に使われることはなく、常に死重となる。
 
 ## 設計方針
 
@@ -23,12 +23,14 @@ MD5 が非ゼロのストリームでは従来どおり計算・照合される�
 
 ## 完了条件
 
-- MD5 が全ゼロのストリームで `update_md5` が一度も呼ばれないこと（ベンチマークで確認）
+- MD5 が全ゼロのストリームがデコード成功し、`update_md5` が一度も呼ばれないこと（単体テストで確認）
 - MD5 が非ゼロのストリームのデコード結果と MD5 照合が従来どおり動作すること
 - 既存テスト・PBT・fuzz がすべて通ること
+- `make compare` でデコード速度の本家比が悪化しないことを確認すること
 
 ## 解決方法
 
 - `src/decoder.rs` の `StreamDecoder` に `md5_known: bool` フィールドを追加する
 - メタデータフェーズで最後のメタデータブロックを処理した時点で `stream_info.md5 != [0u8; 16]` を判定して設定する
 - `StreamDecoder::decode_frame` の成功パスを `if self.md5_known { self.update_md5(&frame); }` に変更する
+- 全ゼロ MD5 ストリームでスキップされることを検証する単体テストを追加する
