@@ -1,7 +1,7 @@
 # 疎なインパルス信号の圧縮率が本家 flac より大きく劣る原因を調査して改善する
 
 - Created: 2026-07-04
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-09
 - Branch: feature/refactor-impulse-compression
 - Polished: 2026-08-09
 
@@ -81,3 +81,61 @@
    - `src/fixed.rs` の `best_order` / `best_order_i32`
    - `src/lpc.rs` の `analyze`、`apply_welch_window`
 4. `benches/benches/codec.rs` に `tools/flac_compare/src/signal.rs::impulse` と同じ固定シード、同じ 5 秒のフレーム数を使う `encode_impulse` を追加する。benches クレートから flac_compare (bin crate) の `mod signal` を import できないため、impulse の生成コードは bench 側に複製し、生成結果が元の `impulse` と一致することを照合テストで確認する (照合テストは benches クレート内のテストとして置き、期待値は flac_compare 側の `impulse` から一度生成した固定値を埋め込む。生成コードの複製が元から乖離すると比較自体の意味がなくなるため)。診断経路とベンチマークを追加した状態を Criterion のベースライン保存コミットとし、そのコミットで `cargo bench -p benches --bench codec -- --save-baseline impulse-before` を実行する。候補側で `cargo bench -p benches --bench codec -- --baseline impulse-before` を実行し、Criterion の推定値を比較する。採用候補について `make compare` のフレームデータ圧縮率・CLI 速度・相互運用チェック、既存テスト、PBT、fuzz を実行する。見送った速度改善は `docs/failed-optimizations.md` に記録する (対象は完了条件の見送り分岐と同じ)
+
+## 調査結果と見送りの判断
+
+以下の調査は、基準を次の条件に固定して実施した。
+
+- 本家 flac: 1.5.0 (Homebrew でインストールした実行ファイル)
+- flac-rs の基準コミット: 98d60f0 (作業ブランチ `feature/refactor-impulse-compression` の分岐点)
+- ビルドプロファイル: release (Cargo.toml の既定)
+- ブロックサイズ: flac-rs / 本家とも 4096 (`-b 4096`)
+
+### 実装した診断基盤
+
+- `tools/flac_compare/src/diagnostic.rs` を追加し、FLAC ビットストリームからフレームごとのパーティションオーダー、Rice パラメータ (4 bit / 5 bit 方式)、各パーティションの Rice パラメータまたは escape の固定長、予測方式・次数、wasted bits、チャンネル割り当て、LPC 係数精度、量子化シフトを抽出できるようにした
+- `tools/flac_compare/src/main.rs` に `ReferenceFlac::analyze` (`flac -a -f -o`) と `--diagnose` / `--compare-ana` フラグを追加し、本家の分析出力と flac-rs の出力をサブフレーム単位で照合できるようにした
+- `benches/benches/codec.rs` に `encode_impulse` を追加し、`benches/tests/impulse_signal.rs` で flac_compare の `signal::impulse` との一致 (サンプル数・スパイク数・FNV-1a 64 ハッシュ) を照合するテストを追加した
+- `tools/flac_compare/src/main.rs` の `ReferenceFlac::encode` に `-b 4096` を追加し、`run_case` の `StreamEncoderConfig` と `benches/benches/codec.rs::config` に `block_size: 4096` を明示した (既定値と同一)
+
+### 原因の特定
+
+診断パーサーの照合で、impulse のフレームデータサイズ差の主因は **Rice パーティション最大次数の差** であることを確認した。
+
+- flac-rs (オーダー 4): `partition_order=4` (パーティション幅 256 サンプル)
+- 本家 -5 (オーダー 5): `partition_order=5` (パーティション幅 128 サンプル)
+- 本家 -8 (オーダー 6): `partition_order=6` (パーティション幅 64 サンプル)
+
+サブフレームの予測方式 (両者 FIXED order=0) とチャンネル割り当て (両者 MID_SIDE) は一致しており、ステレオデコリレーションの選択差は無かった。LPC 係数精度・窓関数は impulse では FIXED が選ばれるため寄与しない。仮説 2・3・4 は寄与なしと判断した。仮説 4 は設計方針 3 の制御実験 (`-A` / `-q` の切り替え) を実行していないが、FIXED サブフレームには LPC の係数精度・窓関数が出力に現れず、選択結果を変え得ないため、観測から寄与なしと断定できる。
+
+### パーティションオーダー変更の実測
+
+`StreamEncoderConfig::default` の `max_partition_order` を 4 / 5 / 6 / 7 / 8 に変えて、`make compare` 相当の条件 (相互運用チェック込み) でフレームデータサイズを測定した。
+
+| max_partition_order | impulse フレームデータ | 本家 -5 比 | 他 8 信号 (変更前 4 基準) |
+|---|---:|---:|---|
+| 4 (現行) | 110048 | 1.301 | 基準 |
+| 5 | 64499 | 0.762 | 悪化なし (tonal -18、wasted -22 のみ) |
+| 6 | 40049 | 0.473 | 悪化なし (tonal -175、wasted -65 のみ) |
+| 7 | 29130 | 0.344 | tonal も改善 (-6105) |
+| 8 | 28413 | 0.336 | tonal / square / wasted も大幅改善 |
+
+相互運用チェックは全設定で 33/33 通過した。圧縮率の目標 (impulse 比 1.05 以下) はオーダー 5 で達成する。
+
+### エンコード速度の実測
+
+Criterion のベースライン (`impulse-before`、オーダー 4) に対する実行時間比。ベースラインは 2026-08-09 に、診断ツールと `encode_impulse` ベンチを追加した状態 (基準コミット 98d60f0 + 作業ブランチの未コミット変更) で `cargo bench -p benches --bench codec -- --save-baseline impulse-before` を実行して保存した。bench 名は `codec/encode_tonal`、`codec/encode_noise`、`codec_impulse/encode_impulse` (impulse は 5 秒相当のためスループット表示を正しくするべく別グループ)。
+
+| max_partition_order | encode_impulse | encode_tonal | encode_noise |
+|---|---:|---:|---:|
+| 5 | 0.966 (-3.4%) | 1.034 (+3.4%) | 1.045 (+4.5%) |
+| 6 | 0.969 (-3.1%) | 1.108 (+10.8%) | 1.137 (+13.7%) |
+
+オーダー 5 では encode_tonal (+3.4%) と encode_noise (+4.5%) が完了条件の 1.03 を超える。原因はパーティション数が 16 → 32 に倍増し、noise のような高エントロピー信号ではパーティション分割の利益が無いにもかかわらず、統計収集のコストが増えるため。encode_impulse は改善 (-3.4%) するが、完了条件は 3 ベンチすべてが対象のため、オーダー 5 の採用は完了条件を満たさない。
+
+### 判断
+
+パーティションオーダーを上げる変更は、圧縮率を大きく改善する (オーダー 5 で impulse 比 1.301 → 0.762) ものの、エンコード速度の完了条件 (encode_impulse / encode_tonal / encode_noise が各 1.03 以下) を満たせない。オーダー 6 以上は速度悪化がさらに大きくなる。圧縮率と速度のトレードオフが完了条件の制約と整合しないため、**改善の実装は見送る**。
+
+- 採用候補: なし
+- 不採用にした候補: `max_partition_order` の 5 / 6 / 7 / 8 (圧縮率は改善するがエンコード速度が完了条件を超える)
