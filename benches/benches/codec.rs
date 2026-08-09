@@ -6,6 +6,7 @@
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use std::hint::black_box;
 
+use benches::impulse_signal;
 use shiguredo_flac::decoder::decode;
 use shiguredo_flac::encoder::{StreamEncoderConfig, encode};
 
@@ -57,6 +58,8 @@ fn config() -> StreamEncoderConfig {
         sample_rate: 44100,
         channels: 2,
         bits_per_sample: 16,
+        // 圧縮率の比較条件を flac_compare と揃えて固定する (既定値と同一)
+        block_size: 4096,
         ..StreamEncoderConfig::default()
     }
 }
@@ -64,8 +67,11 @@ fn config() -> StreamEncoderConfig {
 fn bench_codec(c: &mut Criterion) {
     // 44.1 kHz 2 秒相当
     const FRAMES: usize = 44100 * 2;
+    // impulse は flac_compare と同じ 5 秒相当 (220500 フレーム)
+    const IMPULSE_FRAMES: usize = 44100 * 5;
     let tonal = tonal_signal(FRAMES);
     let noise = noise_signal(FRAMES);
+    let impulse = impulse_signal(IMPULSE_FRAMES);
     let tonal_flac = encode(config(), &tonal).expect("エンコードに成功するはず");
     let noise_flac = encode(config(), &noise).expect("エンコードに成功するはず");
 
@@ -85,6 +91,16 @@ fn bench_codec(c: &mut Criterion) {
     });
     group.bench_function("decode_noise", |b| {
         b.iter(|| decode(black_box(&noise_flac)).expect("デコードに成功するはず"))
+    });
+    group.finish();
+
+    // impulse は 5 秒相当と信号長が異なるため、スループット表示を正しくする
+    // ために別グループにする (flac_compare の信号と同じ長さ)
+    let mut group = c.benchmark_group("codec_impulse");
+    group.sample_size(20);
+    group.throughput(Throughput::Elements(IMPULSE_FRAMES as u64));
+    group.bench_function("encode_impulse", |b| {
+        b.iter(|| encode(config(), black_box(&impulse)).expect("エンコードに成功するはず"))
     });
     group.finish();
 }

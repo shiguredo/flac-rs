@@ -22,11 +22,28 @@ use std::time::{Duration, Instant};
 use shiguredo_flac::decoder::decode;
 use shiguredo_flac::encoder::{StreamEncoderConfig, encode};
 
+mod diagnostic;
 mod signal;
 mod wav;
 
 /// 速度計測の実行回数 (最小値を採用する)
 const SPEED_RUNS: u32 = 3;
+
+/// 圧縮率の比較で使うブロックサイズ (本家の既定値 4096 に固定する)
+const COMPARE_BLOCK_SIZE: u16 = 4096;
+
+/// 本家エンコードの制御オプション
+///
+/// 比較条件を固定するための `-b` を常に付け、窓関数 `-A` と LPC 係数精度
+/// `-q` は将来の圧縮率調査で候補を切り替えるためのインターフェースとして
+/// 用意する (現在の比較フローは既定値のみを使う)。
+#[derive(Debug, Clone, Default)]
+struct EncodeOptions {
+    /// -A で指定する窓関数 (例: "tukey(0.5)")
+    apodization: Option<String>,
+    /// -q で指定する LPC 係数精度 (例: 14)
+    lpc_precision: Option<u8>,
+}
 
 fn main() -> noargs::Result<()> {
     let mut args = noargs::raw_args();
@@ -48,16 +65,74 @@ fn main() -> noargs::Result<()> {
         .doc("速度計測をスキップする")
         .take(&mut args)
         .is_present();
+    // 圧縮率調査用の診断モード。本家 flac -a の分析出力 (.ana) と flac-rs の
+    // エンコード出力をサブフレーム単位で照合する。通常の比較フローとは独立に
+    // 動作する
+    let diagnose = noargs::flag("diagnose")
+        .doc("Diagnose a flac-rs encode and print per-frame coding conditions")
+        .take(&mut args)
+        .is_present();
+    let compare_ana = noargs::flag("compare-ana")
+        .doc("Compare a flac-rs encode with a reference flac -a analysis per subframe")
+        .take(&mut args)
+        .is_present();
     let seconds: u32 = noargs::opt("seconds")
         .doc("速度計測に使う信号の長さ (秒)")
         .ty("N")
         .default("60")
         .take(&mut args)
         .then(|o| o.value().parse())?;
+    let rs_flac: Option<PathBuf> = noargs::arg("[FLAC]")
+        .doc("flac-rs encode to diagnose or compare (FLAC file)")
+        .example("impulse_rs.flac")
+        .take(&mut args)
+        .present_and_then(|a| a.value().parse())?;
+    let ref_flac: Option<PathBuf> = noargs::arg("[REF_FLAC]")
+        .doc("reference flac encode to compare with --compare-ana (FLAC file)")
+        .example("impulse_ref5.flac")
+        .take(&mut args)
+        .present_and_then(|a| a.value().parse())?;
 
     if let Some(help) = args.finish()? {
         print!("{help}");
         return Ok(());
+    }
+
+    // 診断モードは相互排他。両方指定すると片方が黙って無視されるため
+    if diagnose && compare_ana {
+        return Err(noargs::Error::from(
+            "--diagnose and --compare-ana are mutually exclusive".to_string(),
+        ));
+    }
+
+    // 診断モード: flac-rs の出力を分析して .ana 形式で表示する
+    if diagnose {
+        let path = rs_flac.ok_or_else(|| "missing argument '[FLAC]'".to_string())?;
+        if ref_flac.is_some() {
+            return Err(noargs::Error::from(
+                "--diagnose takes exactly one positional argument".to_string(),
+            ));
+        }
+        return diagnose_rs_file(&path);
+    }
+
+    // 診断モード: flac-rs の出力と本家 flac -a の .ana を照合する
+    if compare_ana {
+        let (rs_path, ref_path) = match (rs_flac, ref_flac) {
+            (Some(rs), Some(reference)) => (rs, reference),
+            _ => {
+                return Err(noargs::Error::from(
+                    "--compare-ana requires two positional arguments <FLAC> <REF_FLAC>".to_string(),
+                ));
+            }
+        };
+        let reference = ReferenceFlac::locate(flac_bin)?;
+        return compare_rs_with_reference(&reference, &rs_path, &ref_path);
+    }
+    if rs_flac.is_some() || ref_flac.is_some() {
+        return Err(noargs::Error::from(
+            "positional arguments are only used with --diagnose / --compare-ana".to_string(),
+        ));
     }
 
     let reference = ReferenceFlac::locate(flac_bin)?;
@@ -228,14 +303,45 @@ impl ReferenceFlac {
     }
 
     /// 指定レベルでエンコードする
-    fn encode(&self, level: &str, wav_path: &Path, out: &Path) -> Result<(), String> {
+    ///
+    /// 圧縮率の比較条件を固定するため、ブロックサイズは常に 4096 を指定する
+    /// (flac-rs 側の `COMPARE_BLOCK_SIZE` と揃える)。調査用の窓関数 `-A` と
+    /// LPC 係数精度 `-q` は `opts` で候補ごとに追加できる。
+    fn encode(
+        &self,
+        level: &str,
+        opts: &EncodeOptions,
+        wav_path: &Path,
+        out: &Path,
+    ) -> Result<(), String> {
         let mut command = self.command();
         command
             .arg(level)
             .arg("-f")
+            .arg("-b")
+            .arg(COMPARE_BLOCK_SIZE.to_string());
+        if let Some(apodization) = &opts.apodization {
+            command.arg("-A").arg(apodization);
+        }
+        if let Some(precision) = opts.lpc_precision {
+            command.arg("-q").arg(precision.to_string());
+        }
+        command.arg("-o").arg(out).arg(wav_path);
+        run(command)
+    }
+
+    /// flac -a でフレーム単位の診断情報を分析し、`out` に保存する
+    ///
+    /// 分析出力は本家実装依存のテキスト形式なので、照合は `diagnostic` モジュールの
+    /// パーサーで構造化してから行う。
+    fn analyze(&self, flac_path: &Path, out: &Path) -> Result<(), String> {
+        let mut command = self.command();
+        command
+            .arg("-a")
+            .arg("-f")
             .arg("-o")
             .arg(out)
-            .arg(wav_path);
+            .arg(flac_path);
         run(command)
     }
 
@@ -324,6 +430,8 @@ fn run_case(case: &SignalCase, reference: &ReferenceFlac, work_dir: &Path) -> Ca
         sample_rate: case.sample_rate,
         channels: case.channels,
         bits_per_sample: case.bits_per_sample,
+        // 本家側の -b 4096 と揃えて比較条件を固定する (既定値と同一)
+        block_size: COMPARE_BLOCK_SIZE,
         ..StreamEncoderConfig::default()
     };
     let rs_flac = encode(config, &case.samples)
@@ -417,8 +525,10 @@ fn prepare_ref_encode(
     .map_err(|e| format!("failed to write the source WAV: {e}"))?;
     let ref5_path = work_dir.join(format!("{}_ref5.flac", case.name));
     let ref8_path = work_dir.join(format!("{}_ref8.flac", case.name));
-    reference.encode("-5", &src_wav, &ref5_path)?;
-    reference.encode("-8", &src_wav, &ref8_path)?;
+    // 比較条件は既定の設定 (-A / -q なし) で固定する。調査時の候補変更は
+    // EncodeOptions を渡して別途行う
+    reference.encode("-5", &EncodeOptions::default(), &src_wav, &ref5_path)?;
+    reference.encode("-8", &EncodeOptions::default(), &src_wav, &ref8_path)?;
 
     let ref5_data = std::fs::read(&ref5_path)
         .map_err(|e| format!("failed to read {}: {e}", ref5_path.display()))?;
@@ -480,7 +590,9 @@ fn compare_pcm(expected: &[i32], actual: &[i32]) -> Result<(), String> {
 /// 書き込むため、ファイルサイズ同士の比較では圧縮性能を評価できない。
 /// メタデータブロックヘッダーは 1 バイトの (last フラグ | ブロックタイプ) と
 /// 3 バイトのビッグエンディアン長 (RFC 9639 Section 8.1)。
-fn frame_data_size(data: &[u8]) -> Result<usize, String> {
+///
+/// 診断モジュールが最初のフレーム位置の導出に使うため `pub(crate)` にする。
+pub(crate) fn frame_data_size(data: &[u8]) -> Result<usize, String> {
     if data.len() < 4 || &data[0..4] != b"fLaC" {
         return Err("not a FLAC stream".to_string());
     }
@@ -720,4 +832,131 @@ fn print_speed(speed: &SpeedReport, seconds: u32) {
         ms(speed.ref_decode),
         times(speed.rs_decode, speed.ref_decode)
     );
+}
+
+/// flac-rs のエンコード出力を診断し、本家 flac -a と同じ形式で表示する
+fn diagnose_rs_file(path: &Path) -> noargs::Result<()> {
+    let data =
+        std::fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    let frames = diagnostic::analyze(&data)?;
+    print_rs_diag(&frames);
+    Ok(())
+}
+
+/// flac-rs のエンコード出力と本家 flac -a の分析出力を照合する
+///
+/// 本家側の分析は `ReferenceFlac::analyze` (flac -a -f -o) を実行して
+/// .ana ファイルを生成し、パーサーで構造化してからサブフレーム単位で照合する。
+fn compare_rs_with_reference(
+    reference: &ReferenceFlac,
+    rs_path: &Path,
+    ref_path: &Path,
+) -> noargs::Result<()> {
+    // 本家の分析出力はバイナリの隣 (target/<profile>/flac_compare) に置く。
+    // 比較フローと独立に動くため、作業ディレクトリをここで作成する
+    let work_dir = work_dir()?;
+    std::fs::create_dir_all(&work_dir)?;
+    let file_name = ref_path
+        .file_name()
+        .ok_or_else(|| "failed to get the reference file name".to_string())?;
+    let ana_name = file_name
+        .to_string_lossy()
+        .strip_suffix(".flac")
+        .map(|stem| format!("{stem}.ana"))
+        .ok_or_else(|| format!("reference file must end with .flac: {}", ref_path.display()))?;
+    let ana_path = work_dir.join(ana_name);
+    reference.analyze(ref_path, &ana_path)?;
+
+    let data =
+        std::fs::read(rs_path).map_err(|e| format!("failed to read {}: {e}", rs_path.display()))?;
+    let rs_frames = diagnostic::analyze(&data)?;
+    let ana_text = std::fs::read_to_string(&ana_path)
+        .map_err(|e| format!("failed to read {}: {e}", ana_path.display()))?;
+    let reference_frames = diagnostic::parse_reference_ana(&ana_text)?;
+
+    let diffs = diagnostic::compare(&rs_frames, &reference_frames);
+    println!(
+        "flac-rs: {} frames, reference: {} frames",
+        rs_frames.len(),
+        reference_frames.len()
+    );
+    if diffs.is_empty() {
+        println!("result: all subframes match");
+        return Ok(());
+    }
+    println!("result: {} differences", diffs.len());
+    for diff in &diffs {
+        println!("  {diff}");
+    }
+    Err(noargs::Error::from(format!(
+        "{} subframe differences found",
+        diffs.len()
+    )))
+}
+
+/// flac-rs 側の診断結果を、`parse_reference_ana` が読める形式で出力する
+///
+/// 本家 flac -a の出力と key=value 形式を揃えているが、本家が必ず書く
+/// `offset=` / `bits=` は含めない (照合に使わないため)。
+///
+/// 出力は 1 回の write にまとめる (パイプで head に繋いだときに途中で
+/// Broken pipe panic しないようにするため)。
+fn print_rs_diag(frames: &[diagnostic::FrameDiag]) {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    for (i, frame) in frames.iter().enumerate() {
+        writeln!(
+            out,
+            "frame={i}\tblocksize={}\tsample_rate={}\tchannels={}\tchannel_assignment={}",
+            frame.block_size,
+            frame.sample_rate,
+            frame.subframes.len(),
+            frame.channel_assignment
+        )
+        .expect("String への書き込みは失敗しない (実装バグ)");
+        for (j, subframe) in frame.subframes.iter().enumerate() {
+            write!(out, "\tsubframe={j}\twasted_bits={}", subframe.wasted_bits)
+                .expect("String への書き込みは失敗しない (実装バグ)");
+            match &subframe.kind {
+                diagnostic::SubframeKind::Constant => write!(out, "\ttype=CONSTANT"),
+                diagnostic::SubframeKind::Verbatim => write!(out, "\ttype=VERBATIM"),
+                diagnostic::SubframeKind::Fixed { order } => {
+                    write!(out, "\ttype=FIXED\torder={order}")
+                }
+                diagnostic::SubframeKind::Lpc {
+                    order,
+                    precision,
+                    shift,
+                } => write!(
+                    out,
+                    "\ttype=LPC\torder={order}\tqlp_coeff_precision={precision}\tquantization_level={shift}"
+                ),
+            }
+            .expect("String への書き込みは失敗しない (実装バグ)");
+            if let Some(residual) = &subframe.residual {
+                // 4 bit 方式は RICE、5 bit 方式は RICE2 (本家の表記に合わせる。
+                // ビットストリームからは方式が必ず分かるため、本家 .ana と
+                // 違って None は無い)
+                let residual_type = match residual.parameter_bits {
+                    Some(4) => "RICE",
+                    Some(5) => "RICE2",
+                    _ => "RICE",
+                };
+                write!(
+                    out,
+                    "\tresidual_type={residual_type}\tpartition_order={}",
+                    residual.partition_order
+                )
+                .expect("String への書き込みは失敗しない (実装バグ)");
+            }
+            writeln!(out).expect("String への書き込みは失敗しない (実装バグ)");
+            if let Some(residual) = &subframe.residual {
+                for (k, partition) in residual.partitions.iter().enumerate() {
+                    writeln!(out, "\t\tparameter[{k}]={partition}")
+                        .expect("String への書き込みは失敗しない (実装バグ)");
+                }
+            }
+        }
+    }
+    print!("{out}");
 }

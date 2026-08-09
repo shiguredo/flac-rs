@@ -113,3 +113,9 @@
 - [ADD] 本家 flac コマンドと相互運用・圧縮率・速度を比較する開発ツール flac_compare を追加する
   - `make compare` で双方向の PCM 一致・flac -t・メタデータ除外の圧縮率・CLI end-to-end の速度を一括で確認する
   - @voluntas
+- [ADD] flac_compare にフレーム単位の診断と本家分析出力とのサブフレーム照合を追加する
+  - 比較条件を `-b 4096` で固定し、`flac -a` の分析出力と flac-rs の出力をサブフレーム単位で照合する
+  - @voluntas
+- [ADD] エンコードベンチマークに疎なインパルス信号のケースを追加する
+  - flac_compare の impulse 信号との一致を照合テストで確認する
+  - @voluntas
