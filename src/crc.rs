@@ -110,8 +110,8 @@ impl Crc16 {
         // テーブル参照の XOR でまとめて 8 バイト分更新できる。バイト単位の
         // 更新はテーブル参照の直列依存が律速になるが、この形は 8 参照が
         // 互いに独立なので並列に実行される
-        let mut chunks = bytes.chunks_exact(8);
-        for chunk in &mut chunks {
+        let (chunks, remainder) = bytes.as_chunks::<8>();
+        for chunk in chunks {
             crc = CRC16_TABLES[7][usize::from((crc >> 8) as u8 ^ chunk[0])]
                 ^ CRC16_TABLES[6][usize::from(crc as u8 ^ chunk[1])]
                 ^ CRC16_TABLES[5][usize::from(chunk[2])]
@@ -121,7 +121,7 @@ impl Crc16 {
                 ^ CRC16_TABLES[1][usize::from(chunk[6])]
                 ^ CRC16_TABLES[0][usize::from(chunk[7])];
         }
-        for &byte in chunks.remainder() {
+        for &byte in remainder {
             crc = (crc << 8) ^ CRC16_TABLES[0][usize::from((crc >> 8) as u8 ^ byte)];
         }
         self.value = crc;

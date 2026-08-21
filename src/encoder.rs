@@ -341,13 +341,15 @@ impl StreamEncoder {
         let mut channel_samples: Vec<Vec<i64>> = Vec::with_capacity(channels);
         if channels == 2 {
             // 2 チャンネル (最も一般的) はペア読み出しに特殊化する。
-            // chunks_exact はストライド走査より自動ベクトル化されやすい
+            // as_chunks はストライド走査より自動ベクトル化されやすい
+            // (チャンネル数が偶数なので端数は出ない)
+            let (pairs, _) = interleaved.as_chunks::<2>();
             let mut left = self.channel_bufs.pop().unwrap_or_default();
             left.clear();
-            left.extend(interleaved.chunks_exact(2).map(|pair| i64::from(pair[0])));
+            left.extend(pairs.iter().map(|pair| i64::from(pair[0])));
             let mut right = self.channel_bufs.pop().unwrap_or_default();
             right.clear();
-            right.extend(interleaved.chunks_exact(2).map(|pair| i64::from(pair[1])));
+            right.extend(pairs.iter().map(|pair| i64::from(pair[1])));
             channel_samples.push(left);
             channel_samples.push(right);
         } else {

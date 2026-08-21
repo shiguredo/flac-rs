@@ -273,7 +273,9 @@ impl SeekTable {
             )));
         }
         let mut points = Vec::new();
-        for chunk in payload.chunks_exact(18) {
+        // ペイロード長は 18 の倍数であることを確認済みなので端数は出ない
+        let (chunks, _) = payload.as_chunks::<18>();
+        for chunk in chunks {
             let sample_number =
                 u64::from_be_bytes(chunk[0..8].try_into().expect("8 バイト固定 (実装バグ)"));
             let stream_offset =

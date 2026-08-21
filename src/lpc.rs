@@ -490,7 +490,8 @@ fn accumulate_lag_group<const LAGS: usize>(windowed: &[f64], base_lag: usize) ->
     let mut acc = [[0.0f64; 4]; LAGS];
     let body = &windowed[start..];
     let chunk_count = body.len() / 4;
-    for (j, chunk) in body.chunks_exact(4).enumerate() {
+    let (chunks, _) = body.as_chunks::<4>();
+    for (j, chunk) in chunks.iter().enumerate() {
         let i = start + j * 4;
         for k in 0..LAGS {
             // ラグ k の相手側 4 要素 (連続)

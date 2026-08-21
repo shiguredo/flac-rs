@@ -524,11 +524,9 @@ impl StreamDecoder {
         match channel_samples.as_slice() {
             // 2 チャンネル (最も一般的) はペア書き込みに特殊化する
             [left, right] => {
-                for ((out, &l), &r) in samples
-                    .chunks_exact_mut(2)
-                    .zip(left.iter())
-                    .zip(right.iter())
-                {
+                // total は block_size * 2 なので端数は出ない
+                let (pairs, _) = samples.as_chunks_mut::<2>();
+                for ((out, &l), &r) in pairs.iter_mut().zip(left.iter()).zip(right.iter()) {
                     out[0] = l as i32;
                     out[1] = r as i32;
                 }

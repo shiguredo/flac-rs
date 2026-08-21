@@ -27,18 +27,21 @@ pub(crate) fn samples_to_md5_bytes(samples: &[i32], bytes_per_sample: usize, buf
             }
         }
         2 => {
-            for (dst, &sample) in buf.chunks_exact_mut(2).zip(samples) {
-                dst.copy_from_slice(&(sample as u16).to_le_bytes());
+            let (chunks, _) = buf.as_chunks_mut::<2>();
+            for (chunk, &sample) in chunks.iter_mut().zip(samples) {
+                chunk.copy_from_slice(&(sample as u16).to_le_bytes());
             }
         }
         3 => {
-            for (dst, &sample) in buf.chunks_exact_mut(3).zip(samples) {
-                dst.copy_from_slice(&sample.to_le_bytes()[..3]);
+            let (chunks, _) = buf.as_chunks_mut::<3>();
+            for (chunk, &sample) in chunks.iter_mut().zip(samples) {
+                chunk.copy_from_slice(&sample.to_le_bytes()[..3]);
             }
         }
         _ => {
-            for (dst, &sample) in buf.chunks_exact_mut(4).zip(samples) {
-                dst.copy_from_slice(&sample.to_le_bytes());
+            let (chunks, _) = buf.as_chunks_mut::<4>();
+            for (chunk, &sample) in chunks.iter_mut().zip(samples) {
+                chunk.copy_from_slice(&sample.to_le_bytes());
             }
         }
     }
@@ -104,15 +107,12 @@ impl Md5 {
             self.buffer.clear();
         }
         // 64 バイトブロックはバッファを経由せず直接処理する
-        let mut chunks = rest.chunks_exact(64);
-        for chunk in &mut chunks {
-            let block: [u8; 64] = chunk
-                .try_into()
-                .expect("64 バイトのスライスは必ず変換できる (実装バグ)");
-            self.process_block(&block);
+        let (blocks, remainder) = rest.as_chunks::<64>();
+        for block in blocks {
+            self.process_block(block);
         }
         // 端数を保存する
-        self.buffer.extend_from_slice(chunks.remainder());
+        self.buffer.extend_from_slice(remainder);
     }
 
     /// パディングを施してダイジェストを返す
@@ -140,8 +140,9 @@ impl Md5 {
     fn process_block(&mut self, block: &[u8; 64]) {
         // ブロックを 16 個の little-endian 32 bit ワードに分解する
         let mut words = [0u32; 16];
-        for (i, chunk) in block.chunks_exact(4).enumerate() {
-            words[i] = u32::from_le_bytes(chunk.try_into().expect("4 バイト (実装バグ)"));
+        let (chunks, _) = block.as_chunks::<4>();
+        for (i, chunk) in chunks.iter().enumerate() {
+            words[i] = u32::from_le_bytes(*chunk);
         }
 
         let [mut a, mut b, mut c, mut d] = self.state;

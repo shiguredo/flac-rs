@@ -509,8 +509,8 @@ impl ResidualPlan {
                     // ほぼ半減させる
                     let terminator = 1u64 << parameter;
                     let mask = terminator - 1;
-                    let mut pairs = samples.chunks_exact(2);
-                    for pair in &mut pairs {
+                    let (pairs, remainder) = samples.as_chunks::<2>();
+                    for pair in pairs {
                         let folded0 = fold(pair[0]);
                         let folded1 = fold(pair[1]);
                         let bits0 = (folded0 >> parameter) + 1 + u64::from(parameter);
@@ -524,7 +524,7 @@ impl ResidualPlan {
                             write_rice_code(writer, folded1, bits1, parameter, mask, terminator);
                         }
                     }
-                    for &value in pairs.remainder() {
+                    for &value in remainder {
                         let folded = fold(value);
                         let bits = (folded >> parameter) + 1 + u64::from(parameter);
                         write_rice_code(writer, folded, bits, parameter, mask, terminator);
