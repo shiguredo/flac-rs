@@ -119,6 +119,12 @@ cargo build -p wasm --target wasm32-unknown-unknown --profile release-wasm
 Node.js のサンプルは [decode.js](./crates/wasm/examples/decode.js) / [encode.js](./crates/wasm/examples/encode.js) にあります。
 詳細は [crates/wasm/README.md](./crates/wasm/README.md) を参照してください。
 
+wasm の動作確認 (エンコード → デコードのラウンドトリップ) は以下で実行できます。
+
+```bash
+make test-wasm
+```
+
 ## ライセンス
 
 Apache License 2.0

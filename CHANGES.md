@@ -11,6 +11,19 @@
 
 ## develop
 
+- [ADD] C API に VORBIS_COMMENT (タグ) の取得と設定を追加する
+  - `flac_decoder_get_vorbis_comment` で `FlacVorbisComment` を取得できるようにする
+  - `flac_encoder_set_vorbis_comment` でエンコード時にタグを設定できるようにする
+  - @voluntas
+- [ADD] WebAssembly API に VORBIS_COMMENT の JSON 変換と構造体サイズ取得を追加する
+  - `flac_vorbis_comment_to_json` と `flac_*_size` 関数群を追加する
+  - @voluntas
+- [FIX] WebAssembly API の `flac_alloc` が返すポインタを 8 バイト境界に整列する
+  - アラインメント 1 で確保していたため、JavaScript 側で `Int32Array` のビューを作ると `RangeError` になり得た
+  - @voluntas
+- [FIX] WebAssembly サンプルが構造体サイズをハードコードしていたのをやめる
+  - `flac_*_size` 関数で取得するようにして、構造体の定義変更で静かに壊れるのを防ぐ
+  - @voluntas
 - [ADD] FLAC (RFC 9639) の Sans I/O なデコーダー / エンコーダーを実装する
   - `StreamDecoder` / `StreamEncoder` / メタデータブロック / フレーム / サブフレームのデコード・エンコードを追加する
   - @voluntas

@@ -51,6 +51,11 @@ wasm-opt -Oz --enable-bulk-memory -o flac_wasm.wasm target/wasm32-unknown-unknow
 - エンコードの例:
   - `node crates/wasm/examples/encode.js /path/to/output.flac`
   - サイン波を生成して FLAC ファイルを作成
+- E2E テスト:
+  - `node crates/wasm/examples/test.mjs`
+  - アラインメント、構造体サイズ、メタデータあり / なしのラウンドトリップを検証
+
+`make test-wasm` でビルドと E2E テストをまとめて実行できます。
 
 ## 提供する機能
 
@@ -60,16 +65,27 @@ c-api には含まれない、wasm 固有の追加機能です。
 
 #### メモリ管理
 
-- `flac_alloc`: メモリ確保
+- `flac_alloc`: メモリ確保 (返されるポインタは 8 バイト境界に整列される)
 - `flac_free`: メモリ解放
 - `flac_vec_ptr`: Vec のポインタ取得
 - `flac_vec_len`: Vec の長さ取得
 - `flac_vec_free`: Vec の解放
 
+#### 構造体サイズ取得
+
+JavaScript 側で構造体を確保するためのバイト数を返します。
+サイズをハードコードすると構造体の定義変更で静かに壊れるため、必ずこれらの関数を使ってください。
+
+- `flac_decoded_frame_size`: `FlacDecodedFrame` のサイズ
+- `flac_stream_info_size`: `FlacStreamInfo` のサイズ
+- `flac_vorbis_comment_size`: `FlacVorbisComment` のサイズ
+- `flac_vorbis_comment_field_size`: `FlacVorbisCommentField` のサイズ
+
 #### デコード関連
 
 - `flac_stream_info_to_json`: `flac_decoder_get_stream_info` の結果を JSON に変換
 - `flac_decoded_frame_to_json`: `flac_decoder_decode_frame` の結果を JSON に変換
+- `flac_vorbis_comment_to_json`: `flac_decoder_get_vorbis_comment` の結果を JSON に変換
 
 ### c-api が提供する関数
 
@@ -110,5 +126,25 @@ c-api の関数がそのまま利用可能です。詳細は `crates/c-api/READM
   "channels": 2,
   "bits_per_sample": 16,
   "first_sample_number": 0
+}
+```
+
+### VORBIS_COMMENT の例
+
+`flac_vorbis_comment_to_json` 関数の出力です。
+
+```json
+{
+  "vendor": "flac-rs wasm example",
+  "fields": [
+    {
+      "name": "TITLE",
+      "value": "WASM encoder example"
+    },
+    {
+      "name": "ARTIST",
+      "value": "flac-rs"
+    }
+  ]
 }
 ```

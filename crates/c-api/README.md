@@ -55,6 +55,7 @@ cc -o target/release/encode \
 - `flac_decoder_finish`: 入力の終端通知
 - `flac_decoder_decode_frame`: フレームのデコード
 - `flac_decoder_get_stream_info`: STREAMINFO 取得
+- `flac_decoder_get_vorbis_comment`: VORBIS_COMMENT (タグ) 取得
 
 ### エンコード
 
@@ -68,7 +69,54 @@ cc -o target/release/encode \
 - `flac_encoder_set_max_lpc_order`: LPC 最大次数設定
 - `flac_encoder_set_max_partition_order`: Rice パーティション最大オーダー設定
 - `flac_encoder_set_stereo_decorrelation`: ステレオデコリレーション設定
+- `flac_encoder_set_vorbis_comment`: VORBIS_COMMENT (タグ) 設定
 - `flac_encoder_initialize`: 初期化
 - `flac_encoder_push_samples`: サンプル投入
 - `flac_encoder_finalize`: 完了処理
 - `flac_encoder_get_output`: 完成した FLAC ストリームの取得
+
+## メタデータ (VORBIS_COMMENT) の扱い
+
+VORBIS_COMMENT は人間可読なタグ (TITLE / ARTIST など) を保持するメタデータブロックです (RFC 9639 Section 8.6)。
+
+### エンコード時の設定
+
+`flac_encoder_set_vorbis_comment()` で設定します。**`flac_encoder_initialize()` より前に呼ぶ必要があります**。
+
+```c
+const char *names[] = {"TITLE", "ARTIST"};
+const char *values[] = {"My Song", "My Artist"};
+flac_encoder_set_vorbis_comment(encoder, "my-app", names, values, 2);
+```
+
+渡した文字列は関数の中で複製されるため、呼び出し後に解放して構いません。
+
+### デコード時の取得
+
+`flac_decoder_get_vorbis_comment()` で取得します。
+メタデータブロックを読み終える必要があるため、**最初のフレームをデコードした後**に呼んでください。
+
+```c
+FlacDecodedFrame frame;
+while ((ret = flac_decoder_decode_frame(decoder, &frame)) == FLAC_ERROR_OK) {
+    if (!comment_printed) {
+        FlacVorbisComment comment;
+        if (flac_decoder_get_vorbis_comment(decoder, &comment) == FLAC_ERROR_OK) {
+            printf("vendor: %s\n", comment.vendor);
+            for (uint32_t i = 0; i < comment.field_count; i++) {
+                printf("%s=%s\n", comment.fields[i].name, comment.fields[i].value);
+            }
+            comment_printed = 1;
+        }
+    }
+    // frame を処理する...
+}
+```
+
+ストリームに VORBIS_COMMENT が含まれていない場合は `FLAC_ERROR_NOT_FOUND` が返ります。
+
+`comment.vendor` と `comment.fields` が参照するバッファはデコーダーが所有しています。
+次のいずれかを行うと無効になるため、必要な内容は呼び出し側で複製してください。
+
+- 同じデコーダーに対してもう一度 `flac_decoder_get_vorbis_comment()` を呼ぶ
+- `flac_decoder_free()` を呼ぶ

@@ -1,8 +1,13 @@
-.PHONY: test cover pbt-with-cover fuzzing fuzzing-parallel fuzzing-list check clippy fmt clean bench compare
+.PHONY: test cover pbt-with-cover fuzzing fuzzing-parallel fuzzing-list check clippy fmt clean bench compare test-wasm
 
 # 全テストを実行する
 test:
 	cargo test --workspace
+
+# wasm のビルドと E2E テストを実行する
+test-wasm:
+	cargo build -p wasm --target wasm32-unknown-unknown --profile release-wasm
+	node crates/wasm/examples/test.mjs
 
 # 全テストカバレッジ付きで実行する
 # (c-api の E2E テストは計測なしでビルドした libflac.a を C からリンクして

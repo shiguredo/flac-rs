@@ -31,8 +31,34 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
+  wasm:
+    name: WebAssembly
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - run: rustup update stable
+      - run: rustup target add wasm32-unknown-unknown
+      - uses: shiguredo/github-actions/.github/actions/rust-cache@main
+        with:
+          os: ubuntu-slim
+          toolchain: stable
+      - run: cargo build -p wasm --target wasm32-unknown-unknown --profile release-wasm
+      # wasm の実行時検証 (Node.js でエンコード → デコードのラウンドトリップ)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Roundtrip test
+        run: |
+          node crates/wasm/examples/test.mjs
+          node crates/wasm/examples/encode.js "${RUNNER_TEMP}/test.flac"
+          node crates/wasm/examples/decode.js "${RUNNER_TEMP}/test.flac"
+        env:
+          NODE_OPTIONS: --no-warnings
+
   slack_notify:
-    needs: [ci]
+    needs: [ci, wasm]
     timeout-minutes: 5
     runs-on: ubuntu-slim
     if: ${{ always() }}
