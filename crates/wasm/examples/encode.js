@@ -44,6 +44,7 @@ const {
     flac_encoder_set_sample_rate,
     flac_encoder_set_channels,
     flac_encoder_set_bits_per_sample,
+    flac_encoder_set_vorbis_comment,
     flac_encoder_initialize,
     flac_encoder_push_samples,
     flac_encoder_finalize,
@@ -60,6 +61,18 @@ function readCString(ptr) {
     return new TextDecoder().decode(view.slice(0, length));
 }
 
+// JavaScript の文字列を wasm メモリに NUL 終端付きで書き込む
+//
+// 解放できるように `{ ptr, size }` を返す
+function writeCString(str) {
+    const bytes = new TextEncoder().encode(str);
+    const size = bytes.length + 1;
+    const ptr = flac_alloc(size);
+    new Uint8Array(memory.buffer, ptr, size).set(bytes);
+    new Uint8Array(memory.buffer, ptr + bytes.length, 1)[0] = 0;
+    return { ptr, size };
+}
+
 function encodeFlacFile(filePath) {
     console.log(`shiguredo_flac version: ${readCString(flac_library_version())}`);
 
@@ -68,6 +81,47 @@ function encodeFlacFile(filePath) {
     flac_encoder_set_sample_rate(encoderPtr, SAMPLE_RATE);
     flac_encoder_set_channels(encoderPtr, CHANNELS);
     flac_encoder_set_bits_per_sample(encoderPtr, BITS_PER_SAMPLE);
+
+    // VORBIS_COMMENT (タグ) を設定する
+    // [NOTE] wasm のメモリは拡張されると buffer が差し替わるため、
+    // 文字列はすべて書き込んでからポインタ配列を作る
+    const vendor = writeCString('flac-rs wasm example');
+    const tagNames = ['TITLE', 'ARTIST'];
+    const tagValues = ['WASM encoder example', 'flac-rs'];
+    const names = tagNames.map(writeCString);
+    const values = tagValues.map(writeCString);
+    const nameArrayPtr = flac_alloc(names.length * 4);
+    const valueArrayPtr = flac_alloc(values.length * 4);
+    new Uint32Array(memory.buffer, nameArrayPtr, names.length).set(
+        names.map((s) => s.ptr),
+    );
+    new Uint32Array(memory.buffer, valueArrayPtr, values.length).set(
+        values.map((s) => s.ptr),
+    );
+
+    if (
+        flac_encoder_set_vorbis_comment(
+            encoderPtr,
+            vendor.ptr,
+            nameArrayPtr,
+            valueArrayPtr,
+            tagNames.length,
+        ) !== FLAC_ERROR_OK
+    ) {
+        const errorMsg = readCString(flac_encoder_get_last_error(encoderPtr));
+        console.error(`Error: Failed to set vorbis comment: ${errorMsg}`);
+        flac_encoder_free(encoderPtr);
+        process.exit(1);
+    }
+
+    // 設定した文字列とポインタ配列は不要になったので解放する
+    // (wasm 側で複製されるため、この時点で解放してよい)
+    flac_free(vendor.ptr, vendor.size);
+    for (const s of [...names, ...values]) {
+        flac_free(s.ptr, s.size);
+    }
+    flac_free(nameArrayPtr, names.length * 4);
+    flac_free(valueArrayPtr, values.length * 4);
 
     if (flac_encoder_initialize(encoderPtr) !== FLAC_ERROR_OK) {
         const errorMsg = readCString(flac_encoder_get_last_error(encoderPtr));

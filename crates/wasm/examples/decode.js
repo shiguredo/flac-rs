@@ -20,14 +20,14 @@ const __dirname = path.dirname(__filename);
 const FLAC_ERROR_OK = 0;
 const FLAC_ERROR_INPUT_REQUIRED = 4;
 const FLAC_ERROR_NO_MORE_FRAMES = 6;
+const FLAC_ERROR_NOT_FOUND = 7;
 
 // 1 回の投入サイズ (バイト)
 const CHUNK_SIZE = 64 * 1024;
 
 // FlacDecodedFrame / FlacStreamInfo 構造体の確保サイズ
-// (実際のサイズ以上であればよい)
-const FRAME_STRUCT_SIZE = 32;
-const STREAM_INFO_STRUCT_SIZE = 64;
+// (サイズは wasm 側の関数で取得する。ハードコードすると構造体の
+//  定義を変えたときに静かに壊れるため)
 
 // wasm ファイルを読み込んで初期化する
 const wasmPath = path.join(__dirname, '../../../target/wasm32-unknown-unknown/release-wasm/flac_wasm.wasm');
@@ -44,14 +44,24 @@ const {
     flac_decoder_finish,
     flac_decoder_decode_frame,
     flac_decoder_get_stream_info,
+    flac_decoder_get_vorbis_comment,
+    flac_decoded_frame_size,
+    flac_stream_info_size,
+    flac_vorbis_comment_size,
     flac_stream_info_to_json,
     flac_decoded_frame_to_json,
+    flac_vorbis_comment_to_json,
     flac_vec_ptr,
     flac_vec_len,
     flac_vec_free,
     flac_alloc,
     flac_free,
 } = wasmInstance.instance.exports;
+
+// 構造体のサイズは wasm 側の関数で取得する
+const FRAME_STRUCT_SIZE = flac_decoded_frame_size();
+const STREAM_INFO_STRUCT_SIZE = flac_stream_info_size();
+const VORBIS_COMMENT_STRUCT_SIZE = flac_vorbis_comment_size();
 
 // NULL 終端の C 文字列を読み取る
 function readCString(ptr) {
@@ -136,6 +146,21 @@ function decodeFlacFile(filePath) {
                 streamInfoPrinted = true;
             }
             flac_free(streamInfoPtr, STREAM_INFO_STRUCT_SIZE);
+
+            // VORBIS_COMMENT はメタデータブロックを読み終えた時点で確定する
+            const commentPtr = flac_alloc(VORBIS_COMMENT_STRUCT_SIZE);
+            const commentRet =
+                flac_decoder_get_vorbis_comment(decoderPtr, commentPtr);
+            if (commentRet === FLAC_ERROR_OK) {
+                const comment = readJSON(flac_vorbis_comment_to_json(commentPtr));
+                console.log('Vorbis comment:');
+                console.log(`  Vendor: ${comment.vendor}`);
+                for (const field of comment.fields) {
+                    console.log(`  ${field.name}: ${field.value}`);
+                }
+                console.log();
+            }
+            flac_free(commentPtr, VORBIS_COMMENT_STRUCT_SIZE);
         }
 
         const frame = readJSON(flac_decoded_frame_to_json(framePtr));
