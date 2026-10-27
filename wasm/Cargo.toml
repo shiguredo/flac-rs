@@ -6,8 +6,8 @@ rust-version.workspace = true
 publish = false
 
 [lib]
-name = "flac_wasm"
 crate-type = ["cdylib"]
+name = "flac_wasm"
 
 [dependencies]
 # C API (wasm からは C API の関数をそのまま利用する)

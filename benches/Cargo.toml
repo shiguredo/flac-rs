@@ -5,12 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[[bench]]
+harness = false
+name = "codec"
+
 [dev-dependencies]
 shiguredo_flac.workspace = true
 
 # 計測 (ベンチマーク)
 criterion = "0.8"
-
-[[bench]]
-name = "codec"
-harness = false

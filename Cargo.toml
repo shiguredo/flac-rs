@@ -14,11 +14,11 @@ include = ["/LICENSE", "/README.md", "/src/**"]
 members = [
   "benches",
   "c-api",
-  "wasm",
   "examples/flac_decode",
   "examples/flac_encode",
   "pbt",
   "tools/flac_compare",
+  "wasm",
 ]
 exclude = ["fuzz"]
 
@@ -36,13 +36,13 @@ shiguredo_flac = { path = "." }
 # cargo build --profile release-wasm --package wasm --target wasm32-unknown-unknown
 [profile.release-wasm]
 inherits = "release"
-# LTO でクレート間の最適化を行いサイズを削減
-lto = true
-# 並列コンパイルを無効化して最適化の質を向上
-codegen-units = 1
 # 速度より出力サイズを優先
 opt-level = "z"
-# スタックアンワインドを省略してサイズを削減
-panic = "abort"
 # デバッグシンボルを削除してサイズを削減
 strip = true
+# LTO でクレート間の最適化を行いサイズを削減
+lto = true
+# スタックアンワインドを省略してサイズを削減
+panic = "abort"
+# 並列コンパイルを無効化して最適化の質を向上
+codegen-units = 1

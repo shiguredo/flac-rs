@@ -2,41 +2,64 @@
 //!
 //! 任意の有効なフィールド名・値でのラウンドトリップを検証する。
 
-use proptest::prelude::*;
 use shiguredo_flac::vorbis_comment::{VorbisComment, VorbisCommentField};
 
-/// 有効なフィールド名: U+0020 から U+007E (U+003D の = を除く)
+/// テストケース数
+const CASES: usize = 128;
+
+/// 有効なフィールド名を生成する: U+0020 から U+007E (U+003D の = を除く)
 /// (RFC 9639 Section 8.6)
-fn field_name() -> impl Strategy<Value = String> {
-    proptest::collection::vec(
-        prop_oneof![0x20u8..=0x3C, 0x3Eu8..=0x7E].prop_map(|b| b as char),
-        1..=16,
-    )
-    .prop_map(|chars| chars.into_iter().collect())
+fn field_name(ctx: &mut noprop::TestCaseContext) -> String {
+    let len = noprop::sample_usize_in(ctx, 1..=16);
+    (0..len)
+        .map(|_| {
+            loop {
+                let b = noprop::sample_u8_in(ctx, 0x20..=0x7E);
+                // `=` は名前と値の区切り文字なので名前には使えない
+                if b != 0x3D {
+                    break b as char;
+                }
+            }
+        })
+        .collect()
 }
 
-/// フィールド値: 任意の UTF-8 文字列 (= を含んでもよい)
-fn field_value() -> impl Strategy<Value = String> {
-    ".{0,32}"
+/// フィールド値を生成する (任意の UTF-8 文字列。= を含んでもよい)
+fn field_value(ctx: &mut noprop::TestCaseContext) -> String {
+    let len = noprop::sample_usize_in(ctx, 0..=32);
+    noprop::sample_string(ctx, len)
 }
 
-fn vorbis_comment() -> impl Strategy<Value = VorbisComment> {
-    (
-        ".{0,32}",
-        proptest::collection::vec(
-            (field_name(), field_value())
-                .prop_map(|(name, value)| VorbisCommentField { name, value }),
-            0..=8,
-        ),
-    )
-        .prop_map(|(vendor, fields)| VorbisComment { vendor, fields })
+/// 有効な VORBIS_COMMENT を生成する
+fn vorbis_comment(ctx: &mut noprop::TestCaseContext) -> VorbisComment {
+    let vendor_len = noprop::sample_usize_in(ctx, 0..=32);
+    let vendor = noprop::sample_string(ctx, vendor_len);
+    let count = noprop::sample_usize_in(ctx, 0..=8);
+    let fields = (0..count)
+        .map(|_| VorbisCommentField {
+            name: field_name(ctx),
+            value: field_value(ctx),
+        })
+        .collect();
+    VorbisComment { vendor, fields }
 }
 
-proptest! {
-    #[test]
-    fn roundtrip(comment in vorbis_comment()) {
+/// VORBIS_COMMENT のラウンドトリップ
+#[test]
+fn roundtrip() -> noprop::TestResult {
+    let seed = noprop::seed_from_env_or_time("FLAC_PBT_SEED")?;
+    let mut runner = noprop::Runner::new(seed);
+
+    runner.run(CASES, |ctx| {
+        let comment = vorbis_comment(ctx);
         let payload = comment.encode_payload().expect("エンコードに成功するはず");
         let decoded = VorbisComment::decode(&payload).expect("デコードに成功するはず");
-        prop_assert_eq!(decoded, comment);
-    }
+        assert_eq!(
+            decoded, comment,
+            "VORBIS_COMMENT のラウンドトリップに失敗した",
+        );
+        Ok(())
+    })?;
+
+    Ok(())
 }

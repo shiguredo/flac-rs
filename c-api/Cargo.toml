@@ -6,8 +6,8 @@ rust-version.workspace = true
 publish = false
 
 [lib]
+crate-type = ["cdylib", "rlib", "staticlib"]
 name = "flac"
-crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 # 本ライブラリ (C API のバインディング対象)

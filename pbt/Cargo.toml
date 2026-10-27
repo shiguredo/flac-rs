@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 # PBT フレームワーク
-proptest = "1.11"
+noprop = "0.2"
 
 [dev-dependencies]
 shiguredo_flac.workspace = true

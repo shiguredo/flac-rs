@@ -3,14 +3,27 @@
 //! 意図的なエラーパス・境界値・決定的な信号のロスレス性を検証する。
 //! 任意サンプル列のロスレス性は PBT (pbt/tests/prop_encoder.rs) が担う。
 
-mod helpers;
-
-use helpers::pseudo_random_samples;
 use shiguredo_flac::decoder;
 use shiguredo_flac::encoder::{StreamEncoder, StreamEncoderConfig, encode};
 use shiguredo_flac::error::EncodeError;
 use shiguredo_flac::metadata::{MetadataBlock, StreamInfo};
 use shiguredo_flac::vorbis_comment::{VorbisComment, VorbisCommentField};
+
+/// LCG による決定的な擬似乱数サンプル列
+fn pseudo_random_samples(count: usize, bits: u32, seed: u64) -> Vec<i32> {
+    let mut state = seed;
+    (0..count)
+        .map(|_| {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let value = (state >> 32) as i64 - (1i64 << 31);
+            let low = -(1i64 << (bits - 1));
+            let high = (1i64 << (bits - 1)) - 1;
+            (value.rem_euclid(high - low + 1) + low) as i32
+        })
+        .collect()
+}
 
 /// エンコード → デコードのロスレス性を検証する
 fn assert_lossless(config: StreamEncoderConfig, samples: &[i32]) {
