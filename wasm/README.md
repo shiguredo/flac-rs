@@ -46,13 +46,13 @@ wasm-opt -Oz --enable-bulk-memory -o flac_wasm.wasm target/wasm32-unknown-unknow
 ## Examples
 
 - デコードの例:
-  - `node crates/wasm/examples/decode.js /path/to/input.flac`
+  - `node wasm/examples/decode.js /path/to/input.flac`
   - FLAC ファイルをデコードして、STREAMINFO とフレーム情報を表示
 - エンコードの例:
-  - `node crates/wasm/examples/encode.js /path/to/output.flac`
+  - `node wasm/examples/encode.js /path/to/output.flac`
   - サイン波を生成して FLAC ファイルを作成
 - E2E テスト:
-  - `node crates/wasm/examples/test.mjs`
+  - `node wasm/examples/test.mjs`
   - アラインメント、構造体サイズ、メタデータあり / なしのラウンドトリップを検証
 
 `make test-wasm` でビルドと E2E テストをまとめて実行できます。
@@ -89,7 +89,7 @@ JavaScript 側で構造体を確保するためのバイト数を返します。
 
 ### c-api が提供する関数
 
-c-api の関数がそのまま利用可能です。詳細は `crates/c-api/README.md` を参照してください。
+c-api の関数がそのまま利用可能です。詳細は `c-api/README.md` を参照してください。
 
 ## JSON 形式
 

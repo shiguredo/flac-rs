@@ -51,9 +51,9 @@ jobs:
           node-version: 24
       - name: Roundtrip test
         run: |
-          node crates/wasm/examples/test.mjs
-          node crates/wasm/examples/encode.js "${RUNNER_TEMP}/test.flac"
-          node crates/wasm/examples/decode.js "${RUNNER_TEMP}/test.flac"
+          node wasm/examples/test.mjs
+          node wasm/examples/encode.js "${RUNNER_TEMP}/test.flac"
+          node wasm/examples/decode.js "${RUNNER_TEMP}/test.flac"
         env:
           NODE_OPTIONS: --no-warnings
 

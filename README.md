@@ -32,8 +32,8 @@ Rust で実装された依存 0 かつ Sans I/O な FLAC (Free Lossless Audio Co
   - デコード: CONSTANT / VERBATIM / FIXED / LPC サブフレーム、全ステレオデコリレーション、CRC-8 / CRC-16 / MD5 検証
   - エンコード: ロスレス保証 (エンコード → デコードで元のサンプル列と完全一致)
   - メタデータ: STREAMINFO / PADDING / APPLICATION / SEEKTABLE / VORBIS_COMMENT / CUESHEET / PICTURE
-- C API (crates/c-api)
-- WebAssembly API (crates/wasm)
+- C API (c-api)
+- WebAssembly API (wasm)
 
 ## 性能
 
@@ -83,7 +83,7 @@ let flac_bytes = encoder.finish()?;
 
 ## C API
 
-C 言語から利用するためのバインディング ([crates/c-api](./crates/c-api)) を提供しています。
+C 言語から利用するためのバインディング ([c-api](./c-api)) を提供しています。
 
 `flac_decoder_*` / `flac_encoder_*` 関数群で、Sans I/O なデコード・エンコードを C からそのまま利用できます。
 C ヘッダファイルは cbindgen で自動生成されます。
@@ -93,17 +93,17 @@ C ヘッダファイルは cbindgen で自動生成されます。
 cargo build --release
 
 # 成果物:
-# - C ヘッダファイル: crates/c-api/include/flac.h
+# - C ヘッダファイル: c-api/include/flac.h
 # - 静的ライブラリ: target/release/libflac.a
 # - 動的ライブラリ: target/release/libflac.dylib (Linux では libflac.so)
 ```
 
-サンプルは [decode.c](./crates/c-api/examples/decode.c) / [encode.c](./crates/c-api/examples/encode.c) にあります。
-ビルド方法など詳細は [crates/c-api/README.md](./crates/c-api/README.md) を参照してください。
+サンプルは [decode.c](./c-api/examples/decode.c) / [encode.c](./c-api/examples/encode.c) にあります。
+ビルド方法など詳細は [c-api/README.md](./c-api/README.md) を参照してください。
 
 ## WebAssembly API
 
-JavaScript/TypeScript から利用するための WebAssembly バインディング ([crates/wasm](./crates/wasm)) を提供しています。
+JavaScript/TypeScript から利用するための WebAssembly バインディング ([wasm](./wasm)) を提供しています。
 
 C API の全関数に加えて、wasm 固有のメモリ管理関数 (`flac_alloc` など) と
 JSON 変換関数 (`flac_stream_info_to_json` / `flac_decoded_frame_to_json`) を提供します。
@@ -116,8 +116,8 @@ rustup target add wasm32-unknown-unknown
 cargo build -p wasm --target wasm32-unknown-unknown --profile release-wasm
 ```
 
-Node.js のサンプルは [decode.js](./crates/wasm/examples/decode.js) / [encode.js](./crates/wasm/examples/encode.js) にあります。
-詳細は [crates/wasm/README.md](./crates/wasm/README.md) を参照してください。
+Node.js のサンプルは [decode.js](./wasm/examples/decode.js) / [encode.js](./wasm/examples/encode.js) にあります。
+詳細は [wasm/README.md](./wasm/README.md) を参照してください。
 
 wasm の動作確認 (エンコード → デコードのラウンドトリップ) は以下で実行できます。
 

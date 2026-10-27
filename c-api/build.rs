@@ -18,7 +18,7 @@ fn main() {
 
 /// ルートの Cargo.toml からライブラリのバージョンを取得する
 fn get_root_version() -> String {
-    let root_cargo_toml = include_str!("../../Cargo.toml");
+    let root_cargo_toml = include_str!("../Cargo.toml");
     root_cargo_toml
         .lines()
         .find_map(|line| {

@@ -15,22 +15,22 @@ C 言語用のヘッダファイルは [`include/flac.h`](./include/flac.h) に�
 cargo build --release
 
 # サンプルプログラムのビルドに必要なファイルのパスは以下の通りです:
-# - C ヘッダファイル: crates/c-api/include/flac.h
+# - C ヘッダファイル: c-api/include/flac.h
 # - ライブラリファイル:
 #   - target/release/libflac.a (静的ライブラリ)
 #   - target/release/libflac.dylib (動的ライブラリ、Linux では libflac.so)
 
 # decode.c をビルドおよび実行
 cc -o target/release/decode \
-   -I crates/c-api/include/ \
-   crates/c-api/examples/decode.c \
+   -I c-api/include/ \
+   c-api/examples/decode.c \
    target/release/libflac.a
 ./target/release/decode /path/to/input.flac
 
 # encode.c をビルドおよび実行
 cc -o target/release/encode \
-   -I crates/c-api/include/ \
-   crates/c-api/examples/encode.c \
+   -I c-api/include/ \
+   c-api/examples/encode.c \
    target/release/libflac.a -lm
 ./target/release/encode /path/to/output.flac
 ```

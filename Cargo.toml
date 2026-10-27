@@ -13,8 +13,8 @@ include = ["/LICENSE", "/README.md", "/src/**"]
 [workspace]
 members = [
   "benches",
-  "crates/c-api",
-  "crates/wasm",
+  "c-api",
+  "wasm",
   "examples/flac_decode",
   "examples/flac_encode",
   "pbt",

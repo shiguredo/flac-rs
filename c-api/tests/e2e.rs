@@ -11,7 +11,7 @@ fn test_c_examples_compile() {
     let lib_path = build_static_lib(&project_root);
 
     // examples ディレクトリから全ての .c ファイルを検索する
-    let c_files: Vec<_> = std::fs::read_dir(project_root.join("crates/c-api/examples/"))
+    let c_files: Vec<_> = std::fs::read_dir(project_root.join("c-api/examples/"))
         .expect("examples ディレクトリの読み込みに失敗した")
         .filter_map(|entry| {
             let entry = entry.ok()?;
@@ -47,7 +47,7 @@ fn test_c_examples_compile() {
             .arg(&output_path)
             .arg(&lib_path)
             .arg("-I")
-            .arg(project_root.join("crates/c-api/include"));
+            .arg(project_root.join("c-api/include"));
 
         // sin() などの数学関数のために libm をリンクする (Windows 以外)
         #[cfg(not(target_os = "windows"))]
@@ -71,7 +71,7 @@ fn test_simple_encode_decode() {
     let project_root = get_project_root();
     let lib_path = build_static_lib(&project_root);
 
-    let c_file = project_root.join("crates/c-api/tests/simple_encode_decode.c");
+    let c_file = project_root.join("c-api/tests/simple_encode_decode.c");
     assert!(
         c_file.exists(),
         "simple_encode_decode.c が {} に存在しない",
@@ -90,7 +90,7 @@ fn test_simple_encode_decode() {
         .arg(&output_path)
         .arg(&lib_path)
         .arg("-I")
-        .arg(project_root.join("crates/c-api/include"));
+        .arg(project_root.join("c-api/include"));
 
     // Windows のみ追加のライブラリをリンクする
     #[cfg(target_os = "windows")]
@@ -118,7 +118,7 @@ fn test_vorbis_comment() {
     let project_root = get_project_root();
     let lib_path = build_static_lib(&project_root);
 
-    let c_file = project_root.join("crates/c-api/tests/vorbis_comment.c");
+    let c_file = project_root.join("c-api/tests/vorbis_comment.c");
     assert!(
         c_file.exists(),
         "vorbis_comment.c が {} に存在しない",
@@ -137,7 +137,7 @@ fn test_vorbis_comment() {
         .arg(&output_path)
         .arg(&lib_path)
         .arg("-I")
-        .arg(project_root.join("crates/c-api/include"));
+        .arg(project_root.join("c-api/include"));
 
     // Windows のみ追加のライブラリをリンクする
     #[cfg(target_os = "windows")]
@@ -192,7 +192,6 @@ fn get_project_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir
         .parent()
-        .and_then(|p| p.parent())
         .expect("プロジェクトルートの取得に失敗した")
         .to_path_buf()
 }

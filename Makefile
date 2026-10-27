@@ -7,7 +7,7 @@ test:
 # wasm のビルドと E2E テストを実行する
 test-wasm:
 	cargo build -p wasm --target wasm32-unknown-unknown --profile release-wasm
-	node crates/wasm/examples/test.mjs
+	node wasm/examples/test.mjs
 
 # 全テストカバレッジ付きで実行する
 # (c-api の E2E テストは計測なしでビルドした libflac.a を C からリンクして

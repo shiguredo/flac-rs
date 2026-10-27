@@ -5,7 +5,7 @@
  *
  * ```bash
  * cargo build -p wasm --target wasm32-unknown-unknown --profile release-wasm
- * node crates/wasm/examples/decode.js /path/to/input.flac
+ * node wasm/examples/decode.js /path/to/input.flac
  * ```
  */
 
@@ -30,7 +30,7 @@ const CHUNK_SIZE = 64 * 1024;
 //  定義を変えたときに静かに壊れるため)
 
 // wasm ファイルを読み込んで初期化する
-const wasmPath = path.join(__dirname, '../../../target/wasm32-unknown-unknown/release-wasm/flac_wasm.wasm');
+const wasmPath = path.join(__dirname, '../../target/wasm32-unknown-unknown/release-wasm/flac_wasm.wasm');
 const wasmBuffer = fs.readFileSync(wasmPath);
 const wasmInstance = await WebAssembly.instantiate(wasmBuffer);
 

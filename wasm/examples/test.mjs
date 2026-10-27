@@ -8,7 +8,7 @@
  *
  * ```bash
  * cargo build -p wasm --target wasm32-unknown-unknown --profile release-wasm
- * node crates/wasm/examples/test.mjs
+ * node wasm/examples/test.mjs
  * ```
  */
 
@@ -31,7 +31,7 @@ const TOTAL_SAMPLES = 20000;
 
 const wasmPath = path.join(
     __dirname,
-    '../../../target/wasm32-unknown-unknown/release-wasm/flac_wasm.wasm',
+    '../../target/wasm32-unknown-unknown/release-wasm/flac_wasm.wasm',
 );
 const wasmBuffer = fs.readFileSync(wasmPath);
 const { instance } = await WebAssembly.instantiate(wasmBuffer);
