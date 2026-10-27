@@ -35,8 +35,21 @@ int main(int argc, char **argv) {
     flac_encoder_set_channels(encoder, CHANNELS);
     flac_encoder_set_bits_per_sample(encoder, BITS_PER_SAMPLE);
 
-    // 2. エンコード処理を初期化する
-    FlacError ret = flac_encoder_initialize(encoder);
+    // 2. VORBIS_COMMENT (タグ) を設定する
+    //    flac_encoder_initialize() より前に呼ぶ必要がある
+    static const char *const TAG_NAMES[] = {"TITLE", "ARTIST"};
+    static const char *const TAG_VALUES[] = {"Sine Wave", "flac-rs sample"};
+    FlacError ret = flac_encoder_set_vorbis_comment(
+        encoder, "flac-rs encode.c sample", TAG_NAMES, TAG_VALUES, 2);
+    if (ret != FLAC_ERROR_OK) {
+        fprintf(stderr, "Failed to set vorbis comment: %s\n",
+                flac_encoder_get_last_error(encoder));
+        flac_encoder_free(encoder);
+        return 1;
+    }
+
+    // 3. エンコード処理を初期化する
+    ret = flac_encoder_initialize(encoder);
     if (ret != FLAC_ERROR_OK) {
         fprintf(stderr, "Failed to initialize encoder: %s\n",
                 flac_encoder_get_last_error(encoder));
@@ -44,7 +57,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // 3. サイン波 (左 440 Hz / 右 660 Hz) を生成してチャンクごとに投入する
+    // 4. サイン波 (左 440 Hz / 右 660 Hz) を生成してチャンクごとに投入する
     int32_t chunk[CHUNK_SAMPLES * CHANNELS];
     const uint64_t total_samples = (uint64_t)SAMPLE_RATE * DURATION_SECONDS;
     uint64_t generated = 0;
@@ -68,7 +81,7 @@ int main(int argc, char **argv) {
         generated += n;
     }
 
-    // 4. エンコード処理を完了する
+    // 5. エンコード処理を完了する
     ret = flac_encoder_finalize(encoder);
     if (ret != FLAC_ERROR_OK) {
         fprintf(stderr, "Failed to finalize encoder: %s\n",
@@ -77,7 +90,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // 5. 完成した FLAC ストリームをファイルに書き込む
+    // 6. 完成した FLAC ストリームをファイルに書き込む
     const uint8_t *output_data;
     uint64_t output_size;
     ret = flac_encoder_get_output(encoder, &output_data, &output_size);
@@ -106,7 +119,7 @@ int main(int argc, char **argv) {
            (unsigned long long)total_samples, CHANNELS, BITS_PER_SAMPLE, SAMPLE_RATE,
            output_path, (unsigned long long)output_size);
 
-    // 6. リソース解放
+    // 7. リソース解放
     flac_encoder_free(encoder);
     return 0;
 }

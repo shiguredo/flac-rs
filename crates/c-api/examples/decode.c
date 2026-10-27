@@ -34,15 +34,15 @@ int main(int argc, char **argv) {
 
     // 2. フレームをデコードし、入力が足りなければファイルから読み足す
     uint8_t chunk[CHUNK_SIZE];
-    int stream_info_printed = 0;
+    int metadata_printed = 0;
     uint64_t total_frames = 0;
     uint64_t total_samples = 0;
     while (1) {
         FlacDecodedFrame frame;
         FlacError ret = flac_decoder_decode_frame(decoder, &frame);
         if (ret == FLAC_ERROR_OK) {
-            // 最初のフレームがデコードできた時点で STREAMINFO は必ず取得できる
-            if (!stream_info_printed) {
+            // 最初のフレームがデコードできた時点でメタデータは確定している
+            if (!metadata_printed) {
                 FlacStreamInfo info;
                 if (flac_decoder_get_stream_info(decoder, &info) == FLAC_ERROR_OK) {
                     printf("Stream info:\n");
@@ -53,8 +53,24 @@ int main(int argc, char **argv) {
                            (unsigned long long)info.total_samples);
                     printf("  Block size: %u-%u\n", info.min_block_size,
                            info.max_block_size);
-                    stream_info_printed = 1;
                 }
+
+                // VORBIS_COMMENT (タグ) は含まれていないこともある
+                FlacVorbisComment comment;
+                FlacError comment_ret =
+                    flac_decoder_get_vorbis_comment(decoder, &comment);
+                if (comment_ret == FLAC_ERROR_OK) {
+                    printf("Vorbis comment:\n");
+                    printf("  Vendor: %s\n", comment.vendor);
+                    for (uint32_t i = 0; i < comment.field_count; i++) {
+                        printf("  %s: %s\n", comment.fields[i].name,
+                               comment.fields[i].value);
+                    }
+                } else if (comment_ret != FLAC_ERROR_NOT_FOUND) {
+                    fprintf(stderr, "Failed to get vorbis comment: %s\n",
+                            flac_decoder_get_last_error(decoder));
+                }
+                metadata_printed = 1;
             }
             total_frames++;
             total_samples += frame.sample_count / frame.channels;

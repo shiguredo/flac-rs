@@ -29,6 +29,9 @@ pub enum FlacError {
 
     /// これ以上デコードするフレームが存在しない
     FLAC_ERROR_NO_MORE_FRAMES,
+
+    /// 要求された対象が存在しない (該当するメタデータブロックがない等)
+    FLAC_ERROR_NOT_FOUND,
 }
 
 impl From<DecodeError> for FlacError {

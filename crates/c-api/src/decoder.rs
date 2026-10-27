@@ -60,6 +60,37 @@ pub struct FlacDecodedFrame {
     pub bits_per_sample: u8,
 }
 
+/// VORBIS_COMMENT の 1 フィールド (name=value) を表す構造体 (RFC 9639 Section 8.6)
+///
+/// `name` と `value` が参照するバッファは `FlacDecoder` が所有しており、
+/// 同じデコーダーに対して次の `flac_decoder_decode_frame()` を呼び出すか
+/// `flac_decoder_free()` を呼び出すと無効になる
+#[repr(C)]
+pub struct FlacVorbisCommentField {
+    /// フィールド名へのポインタ (NUL 終端、UTF-8)
+    pub name: *const c_char,
+
+    /// フィールド値へのポインタ (NUL 終端、UTF-8)
+    pub value: *const c_char,
+}
+
+/// FLAC ストリームの VORBIS_COMMENT メタデータブロックを表す構造体 (RFC 9639 Section 8.6)
+///
+/// `vendor` と `fields` が参照するバッファは `FlacDecoder` が所有しており、
+/// 同じデコーダーに対して次の `flac_decoder_decode_frame()` を呼び出すか
+/// `flac_decoder_free()` を呼び出すと無効になる
+#[repr(C)]
+pub struct FlacVorbisComment {
+    /// ファイルを生成したプログラム名へのポインタ (NUL 終端、UTF-8)
+    pub vendor: *const c_char,
+
+    /// フィールド列へのポインタ。フィールドがなければ NULL
+    pub fields: *const FlacVorbisCommentField,
+
+    /// `fields` の要素数
+    pub field_count: u32,
+}
+
 /// FLAC ストリームのデコード処理を行うための構造体
 ///
 /// # 関連関数
@@ -119,6 +150,24 @@ pub struct FlacDecoder {
     /// `flac_decoder_finish()` が呼ばれたか
     finished: bool,
     last_error_string: Option<CString>,
+    /// `flac_decoder_get_vorbis_comment()` が返すデータの実体を保持する
+    ///
+    /// `FlacVorbisComment` / `FlacVorbisCommentField` が参照する C 文字列と
+    /// フィールド配列へのポインタを有効に保つため、呼び出しのたびに作り直す
+    vorbis_comment: Option<VorbisCommentCache>,
+}
+
+/// C API で返す VORBIS_COMMENT のキャッシュ
+struct VorbisCommentCache {
+    /// vendor 文字列 (NUL 終端)
+    vendor: CString,
+    /// フィールド列 (`FlacVorbisCommentField` の配列)
+    fields: Vec<FlacVorbisCommentField>,
+    /// `vendor` と `fields` が指す C 文字列の実体
+    ///
+    /// 先頭に `_` を付けて「読み出さないが生存させ続ける」ことを明示する。
+    /// このフィールドを落とすと `fields` のポインタがダングリングになる
+    _entries: Vec<(CString, CString)>,
 }
 
 impl FlacDecoder {
@@ -143,6 +192,7 @@ pub extern "C" fn flac_decoder_new() -> *mut FlacDecoder {
         current_frame: None,
         finished: false,
         last_error_string: None,
+        vorbis_comment: None,
     });
     Box::into_raw(decoder)
 }
@@ -387,4 +437,130 @@ pub unsafe extern "C" fn flac_decoder_get_stream_info(
         (*out_stream_info).md5 = info.md5;
     }
     FlacError::FLAC_ERROR_OK
+}
+
+/// FLAC ストリームの VORBIS_COMMENT メタデータブロックを取得する
+///
+/// VORBIS_COMMENT は STREAMINFO に続くメタデータブロックとして格納されるため、
+/// メタデータブロックをすべて読み終えるまで取得できない。
+/// `flac_decoder_decode_frame()` が最初のフレームを返した時点で確定している
+///
+/// # 引数
+///
+/// - `decoder`: `FlacDecoder` インスタンスへのポインタ
+///   - NULL ポインタが渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+/// - `out_comment`: VORBIS_COMMENT を受け取る `FlacVorbisComment` 構造体へのポインタ
+///   - NULL ポインタが渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+///
+/// # 戻り値
+///
+/// - `FLAC_ERROR_OK`: 正常に VORBIS_COMMENT が取得された
+/// - `FLAC_ERROR_NULL_POINTER`: 引数として NULL ポインタが渡された
+/// - `FLAC_ERROR_INPUT_REQUIRED`: メタデータブロックのデコードに必要な入力データが不足している
+/// - `FLAC_ERROR_NOT_FOUND`: ストリームに VORBIS_COMMENT が含まれていない
+///
+/// # 注意
+///
+/// `out_comment->vendor` と `out_comment->fields` が参照するバッファは
+/// `FlacDecoder` が所有しており、次のいずれかを行うと無効になる:
+/// - 同じデコーダーに対して再度この関数を呼び出す
+/// - `flac_decoder_free()` を呼び出す
+///
+/// `flac_decoder_decode_frame()` では無効にならない
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn flac_decoder_get_vorbis_comment(
+    decoder: *mut FlacDecoder,
+    out_comment: *mut FlacVorbisComment,
+) -> FlacError {
+    if decoder.is_null() {
+        return FlacError::FLAC_ERROR_NULL_POINTER;
+    }
+    let decoder = unsafe { &mut *decoder };
+
+    if out_comment.is_null() {
+        decoder.set_last_error("[flac_decoder_get_vorbis_comment] out_comment is null");
+        return FlacError::FLAC_ERROR_NULL_POINTER;
+    }
+
+    // メタデータブロックをすべて読み終えていないと VORBIS_COMMENT の有無は確定しない
+    let complete = decoder.inner.metadata_complete();
+    let comment = decoder
+        .inner
+        .metadata()
+        .iter()
+        .find_map(|block| match block {
+            shiguredo_flac::metadata::MetadataBlock::VorbisComment(c) => Some(c),
+            _ => None,
+        });
+
+    let Some(comment) = comment else {
+        // メタデータを読み終えていれば、VORBIS_COMMENT は存在しないと確定する。
+        // 読み終えていなければ、後続ブロックとして現れる可能性が残っている
+        if complete {
+            decoder.set_last_error(
+                "[flac_decoder_get_vorbis_comment] VORBIS_COMMENT block is not present",
+            );
+            return FlacError::FLAC_ERROR_NOT_FOUND;
+        }
+        decoder.set_last_error(
+            "[flac_decoder_get_vorbis_comment] metadata blocks have not been decoded yet",
+        );
+        return FlacError::FLAC_ERROR_INPUT_REQUIRED;
+    };
+
+    match VorbisCommentCache::new(comment) {
+        Ok(cache) => {
+            let cache = decoder.vorbis_comment.insert(cache);
+            unsafe {
+                (*out_comment).vendor = cache.vendor.as_ptr();
+                (*out_comment).fields = if cache.fields.is_empty() {
+                    std::ptr::null()
+                } else {
+                    cache.fields.as_ptr()
+                };
+                (*out_comment).field_count = cache.fields.len() as u32;
+            }
+            FlacError::FLAC_ERROR_OK
+        }
+        Err(e) => {
+            decoder.set_last_error(&format!(
+                "[flac_decoder_get_vorbis_comment] Failed to convert vendor or field: {e}"
+            ));
+            FlacError::FLAC_ERROR_INVALID_DATA
+        }
+    }
+}
+
+impl VorbisCommentCache {
+    /// VORBIS_COMMENT を C から参照できる形に変換する
+    ///
+    /// 文字列に NUL バイトが含まれる場合は変換に失敗する
+    /// (RFC 9639 Section 8.6 の UTF-8 文字列に NUL は含まれ得るが、
+    /// C 文字列として表現できないためエラーとする)
+    fn new(
+        comment: &shiguredo_flac::vorbis_comment::VorbisComment,
+    ) -> Result<Self, std::ffi::NulError> {
+        let vendor = CString::new(comment.vendor.as_str())?;
+        let mut entries = Vec::new();
+        for field in &comment.fields {
+            entries.push((
+                CString::new(field.name.as_str())?,
+                CString::new(field.value.as_str())?,
+            ));
+        }
+        // entries の (name, value) を指すフィールド配列を作る。
+        // entries は self が保持するため、ポインタは self の生存期間中有効
+        let fields = entries
+            .iter()
+            .map(|(name, value)| FlacVorbisCommentField {
+                name: name.as_ptr(),
+                value: value.as_ptr(),
+            })
+            .collect();
+        Ok(Self {
+            vendor,
+            fields,
+            _entries: entries,
+        })
+    }
 }

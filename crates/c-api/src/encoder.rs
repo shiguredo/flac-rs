@@ -1,5 +1,8 @@
 //! ../../../src/encoder.rs の C API を定義するためのモジュール
-use std::ffi::{CString, c_char};
+use std::ffi::{CStr, CString, c_char};
+
+use shiguredo_flac::metadata::MetadataBlock;
+use shiguredo_flac::vorbis_comment::{VorbisComment, VorbisCommentField};
 
 use crate::error::FlacError;
 
@@ -403,6 +406,124 @@ pub unsafe extern "C" fn flac_encoder_set_stereo_decorrelation(
     }
 
     encoder.config.stereo_decorrelation = stereo_decorrelation;
+    FlacError::FLAC_ERROR_OK
+}
+
+/// エンコードするストリームに VORBIS_COMMENT メタデータブロックを設定する
+///
+/// この関数を複数回呼ぶと、最後に設定した内容で上書きされる。
+/// フィールドを設定しない (vendor のみの) VORBIS_COMMENT を作ることもできる
+///
+/// # 引数
+///
+/// - `encoder`: `FlacEncoder` インスタンスへのポインタ
+///   - NULL ポインタが渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+/// - `vendor`: ファイルを生成したプログラム名 (NUL 終端、UTF-8)
+///   - NULL ポインタが渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+/// - `field_names`: フィールド名の配列 (各要素は NUL 終端、UTF-8)
+///   - `field_count` が 0 より大きいのに NULL が渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+/// - `field_values`: フィールド値の配列 (各要素は NUL 終端、UTF-8)
+///   - `field_count` が 0 より大きいのに NULL が渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+/// - `field_count`: フィールド数
+///
+/// # 戻り値
+///
+/// - `FLAC_ERROR_OK`: 正常に設定された
+/// - `FLAC_ERROR_NULL_POINTER`: 引数として NULL ポインタが渡された
+/// - `FLAC_ERROR_INVALID_STATE`: エンコーダーが既に初期化済みである
+/// - `FLAC_ERROR_INVALID_INPUT`: 文字列が UTF-8 として不正、またはフィールド名が
+///   RFC 9639 Section 8.6 の制約 (U+0020-U+007E かつ `=` を含まない) に反する
+///
+/// エラーが発生した場合は、`flac_encoder_get_last_error()` でエラーメッセージを取得できる
+///
+/// # 注意
+///
+/// 渡された文字列はこの関数の中で複製されるため、呼び出し後に解放してよい
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn flac_encoder_set_vorbis_comment(
+    encoder: *mut FlacEncoder,
+    vendor: *const c_char,
+    field_names: *const *const c_char,
+    field_values: *const *const c_char,
+    field_count: u32,
+) -> FlacError {
+    if encoder.is_null() {
+        return FlacError::FLAC_ERROR_NULL_POINTER;
+    }
+    let encoder = unsafe { &mut *encoder };
+
+    if !encoder.check_not_initialized("flac_encoder_set_vorbis_comment") {
+        return FlacError::FLAC_ERROR_INVALID_STATE;
+    }
+    if vendor.is_null() {
+        encoder.set_last_error("[flac_encoder_set_vorbis_comment] vendor is null");
+        return FlacError::FLAC_ERROR_NULL_POINTER;
+    }
+    if field_count > 0 && (field_names.is_null() || field_values.is_null()) {
+        encoder.set_last_error(
+            "[flac_encoder_set_vorbis_comment] field_names or field_values is null",
+        );
+        return FlacError::FLAC_ERROR_NULL_POINTER;
+    }
+
+    let vendor = match unsafe { CStr::from_ptr(vendor) }.to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            encoder.set_last_error("[flac_encoder_set_vorbis_comment] vendor is not valid UTF-8");
+            return FlacError::FLAC_ERROR_INVALID_INPUT;
+        }
+    };
+
+    let mut fields = Vec::new();
+    for i in 0..field_count as usize {
+        // field_count 分のポインタが有効であることは呼び出し側の責務
+        let name_ptr = unsafe { *field_names.add(i) };
+        let value_ptr = unsafe { *field_values.add(i) };
+        if name_ptr.is_null() || value_ptr.is_null() {
+            encoder.set_last_error(
+                "[flac_encoder_set_vorbis_comment] field_names or field_values element is null",
+            );
+            return FlacError::FLAC_ERROR_NULL_POINTER;
+        }
+        let name = match unsafe { CStr::from_ptr(name_ptr) }.to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                encoder.set_last_error(&format!(
+                    "[flac_encoder_set_vorbis_comment] field_names[{i}] is not valid UTF-8"
+                ));
+                return FlacError::FLAC_ERROR_INVALID_INPUT;
+            }
+        };
+        let value = match unsafe { CStr::from_ptr(value_ptr) }.to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                encoder.set_last_error(&format!(
+                    "[flac_encoder_set_vorbis_comment] field_values[{i}] is not valid UTF-8"
+                ));
+                return FlacError::FLAC_ERROR_INVALID_INPUT;
+            }
+        };
+        fields.push(VorbisCommentField {
+            name: String::from(name),
+            value: String::from(value),
+        });
+    }
+
+    let comment = VorbisComment {
+        vendor: String::from(vendor),
+        fields,
+    };
+
+    // 既存の VORBIS_COMMENT は取り除いてから追加する (上書き)。
+    // 2 つ以上あると StreamEncoder::new() がエラーになるため
+    encoder
+        .config
+        .metadata
+        .retain(|block| !matches!(block, MetadataBlock::VorbisComment(_)));
+    encoder
+        .config
+        .metadata
+        .push(MetadataBlock::VorbisComment(comment));
     FlacError::FLAC_ERROR_OK
 }
 

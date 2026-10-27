@@ -113,6 +113,50 @@ fn test_simple_encode_decode() {
     assert!(status.success(), "simple_encode_decode の実行に失敗した");
 }
 
+#[test]
+fn test_vorbis_comment() {
+    let project_root = get_project_root();
+    let lib_path = build_static_lib(&project_root);
+
+    let c_file = project_root.join("crates/c-api/tests/vorbis_comment.c");
+    assert!(
+        c_file.exists(),
+        "vorbis_comment.c が {} に存在しない",
+        c_file.display()
+    );
+
+    let output_path = lib_path
+        .parent()
+        .expect("ライブラリの親ディレクトリの取得に失敗した")
+        .join("vorbis_comment");
+
+    // C ファイルをコンパイルする
+    let mut cmd = Command::new("cc");
+    cmd.arg(&c_file)
+        .arg("-o")
+        .arg(&output_path)
+        .arg(&lib_path)
+        .arg("-I")
+        .arg(project_root.join("crates/c-api/include"));
+
+    // Windows のみ追加のライブラリをリンクする
+    #[cfg(target_os = "windows")]
+    cmd.arg("-lws2_32").arg("-lntdll").arg("-luserenv");
+
+    let status = cmd
+        .status()
+        .expect("vorbis_comment.c のコンパイルに失敗した");
+
+    assert!(status.success(), "vorbis_comment.c のコンパイルに失敗した");
+
+    // コンパイルされた実行ファイルを実行する
+    let status = Command::new(&output_path)
+        .status()
+        .expect("vorbis_comment の実行に失敗した");
+
+    assert!(status.success(), "vorbis_comment の実行に失敗した");
+}
+
 /// 静的ライブラリ (libflac.a) をビルドして、そのパスを返す
 ///
 /// `cargo test` は staticlib 成果物を生成しないため、テスト内で明示的に

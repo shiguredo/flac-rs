@@ -38,6 +38,10 @@ typedef enum FlacError {
    * これ以上デコードするフレームが存在しない
    */
   FLAC_ERROR_NO_MORE_FRAMES,
+  /**
+   * 要求された対象が存在しない (該当するメタデータブロックがない等)
+   */
+  FLAC_ERROR_NOT_FOUND,
 } FlacError;
 
 /**
@@ -249,6 +253,46 @@ typedef struct FlacStreamInfo {
   uint8_t md5[16];
 } FlacStreamInfo;
 
+/**
+ * VORBIS_COMMENT の 1 フィールド (name=value) を表す構造体 (RFC 9639 Section 8.6)
+ *
+ * `name` と `value` が参照するバッファは `FlacDecoder` が所有しており、
+ * 同じデコーダーに対して次の `flac_decoder_decode_frame()` を呼び出すか
+ * `flac_decoder_free()` を呼び出すと無効になる
+ */
+typedef struct FlacVorbisCommentField {
+  /**
+   * フィールド名へのポインタ (NUL 終端、UTF-8)
+   */
+  const char *name;
+  /**
+   * フィールド値へのポインタ (NUL 終端、UTF-8)
+   */
+  const char *value;
+} FlacVorbisCommentField;
+
+/**
+ * FLAC ストリームの VORBIS_COMMENT メタデータブロックを表す構造体 (RFC 9639 Section 8.6)
+ *
+ * `vendor` と `fields` が参照するバッファは `FlacDecoder` が所有しており、
+ * 同じデコーダーに対して次の `flac_decoder_decode_frame()` を呼び出すか
+ * `flac_decoder_free()` を呼び出すと無効になる
+ */
+typedef struct FlacVorbisComment {
+  /**
+   * ファイルを生成したプログラム名へのポインタ (NUL 終端、UTF-8)
+   */
+  const char *vendor;
+  /**
+   * フィールド列へのポインタ。フィールドがなければ NULL
+   */
+  const struct FlacVorbisCommentField *fields;
+  /**
+   * `fields` の要素数
+   */
+  uint32_t field_count;
+} FlacVorbisComment;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -401,6 +445,39 @@ enum FlacError flac_decoder_decode_frame(struct FlacDecoder *decoder,
  */
 enum FlacError flac_decoder_get_stream_info(struct FlacDecoder *decoder,
                                             struct FlacStreamInfo *out_stream_info);
+
+/**
+ * FLAC ストリームの VORBIS_COMMENT メタデータブロックを取得する
+ *
+ * VORBIS_COMMENT は STREAMINFO に続くメタデータブロックとして格納されるため、
+ * メタデータブロックをすべて読み終えるまで取得できない。
+ * `flac_decoder_decode_frame()` が最初のフレームを返した時点で確定している
+ *
+ * # 引数
+ *
+ * - `decoder`: `FlacDecoder` インスタンスへのポインタ
+ *   - NULL ポインタが渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+ * - `out_comment`: VORBIS_COMMENT を受け取る `FlacVorbisComment` 構造体へのポインタ
+ *   - NULL ポインタが渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+ *
+ * # 戻り値
+ *
+ * - `FLAC_ERROR_OK`: 正常に VORBIS_COMMENT が取得された
+ * - `FLAC_ERROR_NULL_POINTER`: 引数として NULL ポインタが渡された
+ * - `FLAC_ERROR_INPUT_REQUIRED`: メタデータブロックのデコードに必要な入力データが不足している
+ * - `FLAC_ERROR_NOT_FOUND`: ストリームに VORBIS_COMMENT が含まれていない
+ *
+ * # 注意
+ *
+ * `out_comment->vendor` と `out_comment->fields` が参照するバッファは
+ * `FlacDecoder` が所有しており、次のいずれかを行うと無効になる:
+ * - 同じデコーダーに対して再度この関数を呼び出す
+ * - `flac_decoder_free()` を呼び出す
+ *
+ * `flac_decoder_decode_frame()` では無効にならない
+ */
+enum FlacError flac_decoder_get_vorbis_comment(struct FlacDecoder *decoder,
+                                               struct FlacVorbisComment *out_comment);
 
 /**
  * 新しい `FlacEncoder` インスタンスを作成して、それへのポインタを返す
@@ -586,6 +663,44 @@ enum FlacError flac_encoder_set_max_partition_order(struct FlacEncoder *encoder,
  */
 enum FlacError flac_encoder_set_stereo_decorrelation(struct FlacEncoder *encoder,
                                                      bool stereo_decorrelation);
+
+/**
+ * エンコードするストリームに VORBIS_COMMENT メタデータブロックを設定する
+ *
+ * この関数を複数回呼ぶと、最後に設定した内容で上書きされる。
+ * フィールドを設定しない (vendor のみの) VORBIS_COMMENT を作ることもできる
+ *
+ * # 引数
+ *
+ * - `encoder`: `FlacEncoder` インスタンスへのポインタ
+ *   - NULL ポインタが渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+ * - `vendor`: ファイルを生成したプログラム名 (NUL 終端、UTF-8)
+ *   - NULL ポインタが渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+ * - `field_names`: フィールド名の配列 (各要素は NUL 終端、UTF-8)
+ *   - `field_count` が 0 より大きいのに NULL が渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+ * - `field_values`: フィールド値の配列 (各要素は NUL 終端、UTF-8)
+ *   - `field_count` が 0 より大きいのに NULL が渡された場合、`FLAC_ERROR_NULL_POINTER` が返される
+ * - `field_count`: フィールド数
+ *
+ * # 戻り値
+ *
+ * - `FLAC_ERROR_OK`: 正常に設定された
+ * - `FLAC_ERROR_NULL_POINTER`: 引数として NULL ポインタが渡された
+ * - `FLAC_ERROR_INVALID_STATE`: エンコーダーが既に初期化済みである
+ * - `FLAC_ERROR_INVALID_INPUT`: 文字列が UTF-8 として不正、またはフィールド名が
+ *   RFC 9639 Section 8.6 の制約 (U+0020-U+007E かつ `=` を含まない) に反する
+ *
+ * エラーが発生した場合は、`flac_encoder_get_last_error()` でエラーメッセージを取得できる
+ *
+ * # 注意
+ *
+ * 渡された文字列はこの関数の中で複製されるため、呼び出し後に解放してよい
+ */
+enum FlacError flac_encoder_set_vorbis_comment(struct FlacEncoder *encoder,
+                                               const char *vendor,
+                                               const char *const *field_names,
+                                               const char *const *field_values,
+                                               uint32_t field_count);
 
 /**
  * FLAC ストリームのエンコード処理を初期化する

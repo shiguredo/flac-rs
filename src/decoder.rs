@@ -182,6 +182,14 @@ impl StreamDecoder {
         &self.metadata
     }
 
+    /// メタデータブロックをすべて読み終えたか
+    ///
+    /// `false` の間は後続のメタデータブロックがまだ入力に現れ得るため、
+    /// `metadata()` の内容は最終的なものではない
+    pub fn metadata_complete(&self) -> bool {
+        matches!(self.phase, Phase::Frames)
+    }
+
     /// フレームを 1 つデコードする
     ///
     /// - `Ok(Some(frame))`: フレームをデコードした
